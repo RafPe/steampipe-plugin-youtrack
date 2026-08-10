@@ -4,10 +4,12 @@ set -eu
 coverage_file="$(mktemp "${TMPDIR:-/tmp}/steampipe-youtrack-coverage.XXXXXX")"
 trap 'rm -f "$coverage_file"' EXIT HUP INT TERM
 
-# The executable-only root package contains only plugin.Serve wiring and is the
-# explicit coverage-policy allowlist. Every testable first-party package must
-# maintain 100% statement coverage.
-packages="$(go list ./... | grep -v '^github.com/RafPe/steampipe-youtrack$')"
+# Two executable-only packages contain nothing but wiring and are the
+# explicit coverage-policy allowlist: the root package (plugin.Serve) and
+# cmd/releasectl (release.Run, per task-2-brief.md). Every testable
+# first-party package, including internal/release itself, must maintain
+# 100% statement coverage.
+packages="$(go list ./... | grep -v '^github.com/RafPe/steampipe-youtrack$' | grep -v '^github.com/RafPe/steampipe-youtrack/cmd/releasectl$')"
 go test -covermode=atomic -coverprofile="$coverage_file" $packages
 go tool cover -func="$coverage_file"
 
