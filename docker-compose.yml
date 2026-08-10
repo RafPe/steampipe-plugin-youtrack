@@ -1,0 +1,24 @@
+name: steampipe-youtrack-e2e
+
+services:
+  youtrack:
+    image: jetbrains/youtrack:2026.1.13874@sha256:3b1006ad505289b582a8acf5b3e3cbacb71ea06919944f121a345d0f1486fbfb
+    ports:
+      - "127.0.0.1:${YOUTRACK_PORT:-18080}:8080"
+    volumes:
+      - youtrack_data:/opt/youtrack/data
+      - youtrack_conf:/opt/youtrack/conf
+      - youtrack_logs:/opt/youtrack/logs
+      - youtrack_backups:/opt/youtrack/backups
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+
+volumes:
+  youtrack_data:
+  youtrack_conf:
+  youtrack_logs:
+  youtrack_backups:

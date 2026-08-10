@@ -1,0 +1,12 @@
+## [0.1.0] - YYYY-MM-DD
+
+### Added
+
+- Fixture change used only by scripts/changelog-check.sh; not a real changelog entry.
+
+### Fixed
+
+- Second fixture change, used to exercise multi-kind ordering in scripts/changelog-check.sh.
+
+[0.1.0]: https://github.com/RafPe/steampipe-youtrack/compare/v0.0.0...v0.1.0
+

@@ -1,0 +1,9 @@
+{
+  "id": "2-1",
+  "summary": "Sanitized example issue",
+  "created": 1720000000123,
+  "customFields": [
+    {"name": "State", "value": {"name": "Open"}},
+    {"name": "Tags", "value": [{"name": "example"}]}
+  ]
+}
