@@ -38,6 +38,56 @@ func TestResourcePreservesRawJSON(t *testing.T) {
 	}
 }
 
+func TestResourceDecodesExpandedTableFields(t *testing.T) {
+	t.Parallel()
+
+	input := []byte(`{
+		"email":null,
+		"banned":true,
+		"online":false,
+		"untagOnResolve":true,
+		"query":"project: DEMO",
+		"leader":{"id":"1-1"},
+		"users":[{"id":"1-2"}],
+		"projects":[{"id":"0-1"}],
+		"sprints":[{"id":"3-1"}],
+		"currentSprint":{"id":"3-1"},
+		"readSharingSettings":{"permittedGroups":[]},
+		"tagSharingSettings":{"permittedGroups":[]},
+		"updateSharingSettings":{"permittedGroups":[]}
+	}`)
+	var got resource
+	if err := json.Unmarshal(input, &got); err != nil {
+		t.Fatalf("json.Unmarshal(expanded resource) error = %v, want nil", err)
+	}
+	if got.Email != nil {
+		t.Errorf("json.Unmarshal(expanded resource).Email = %v, want nil", got.Email)
+	}
+	if got.Banned == nil || !*got.Banned {
+		t.Errorf("json.Unmarshal(expanded resource).Banned = %v, want true", got.Banned)
+	}
+	if got.Online == nil || *got.Online {
+		t.Errorf("json.Unmarshal(expanded resource).Online = %v, want false", got.Online)
+	}
+	if got.UntagOnResolve == nil || !*got.UntagOnResolve {
+		t.Errorf("json.Unmarshal(expanded resource).UntagOnResolve = %v, want true", got.UntagOnResolve)
+	}
+	if got.Query != "project: DEMO" {
+		t.Errorf("json.Unmarshal(expanded resource).Query = %q, want %q", got.Query, "project: DEMO")
+	}
+	for name, value := range map[string]json.RawMessage{
+		"Leader": got.Leader, "Users": got.Users, "Projects": got.Projects,
+		"Sprints": got.Sprints, "CurrentSprint": got.CurrentSprint,
+		"ReadSharingSettings":   got.ReadSharingSettings,
+		"TagSharingSettings":    got.TagSharingSettings,
+		"UpdateSharingSettings": got.UpdateSharingSettings,
+	} {
+		if len(value) == 0 {
+			t.Errorf("json.Unmarshal(expanded resource).%s is empty, want JSON", name)
+		}
+	}
+}
+
 func TestIssueListPushesQueryAndLimit(t *testing.T) {
 	var gotQuery url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -81,6 +81,7 @@ func TestReadableIDTransforms(t *testing.T) {
 		assertTransformValue(t, tableName, findColumn(t, table, "id"), resource{ID: "2-7"}, "2-7")
 	}
 	assertTransformValue(t, "youtrack_issue", findColumn(t, tables["youtrack_issue"], "project_id"), resource{ProjectID: "0-3"}, "0-3")
+	assertTransformValue(t, "youtrack_saved_query", findColumn(t, tables["youtrack_saved_query"], "query_text"), resource{Query: "project: DEMO"}, "project: DEMO")
 }
 
 func assertTransformValue(t *testing.T, tableName string, column *plugin.Column, item resource, want string) {

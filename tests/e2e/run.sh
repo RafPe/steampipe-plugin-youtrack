@@ -7,6 +7,8 @@ home_dir="$state_dir/home"
 config_dir="$home_dir/.steampipe/config"
 plugin_dir="$home_dir/.steampipe/plugins/local/youtrack"
 base_url=${YOUTRACK_URL:-http://localhost:${YOUTRACK_PORT:-18080}}
+steampipe_version=2.3.2
+steampipe_binary="$state_dir/bin/steampipe"
 run_suffix="$(date +%H%M%S)$$"
 project_short_name="SPET$run_suffix"
 project_name="Steampipe E2E $run_suffix"
@@ -19,10 +21,6 @@ compose() {
 fail() {
   printf '%s\n' "e2e: $*" >&2
   exit 1
-}
-
-skip() {
-  printf '%s\n' "e2e: SKIP: $*" >&2
 }
 
 api() {
@@ -42,7 +40,7 @@ api() {
 }
 
 sql_json() {
-  compose run --rm --no-deps steampipe query --output json "$1"
+  "$steampipe_binary" --install-dir "$home_dir/.steampipe" query --output json "$1"
 }
 
 assert_count() {
@@ -58,8 +56,61 @@ for command_name in docker curl jq go; do
 done
 [ -n "${YOUTRACK_TOKEN:-}" ] || fail "YOUTRACK_TOKEN is required; see docs/e2e.md"
 
-mkdir -p "$config_dir" "$plugin_dir"
+install_steampipe() {
+  os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  case $(uname -m) in
+    x86_64 | amd64) arch=amd64 ;;
+    arm64 | aarch64) arch=arm64 ;;
+    *) fail "unsupported Steampipe architecture: $(uname -m)" ;;
+  esac
+  case $os in
+    darwin) archive="steampipe_darwin_${arch}.zip" ;;
+    linux) archive="steampipe_linux_${arch}.tar.gz" ;;
+    *) fail "unsupported Steampipe operating system: $os" ;;
+  esac
+
+  cache_dir="$state_dir/cache/steampipe/$steampipe_version"
+  archive_path="$cache_dir/$archive"
+  checksums_path="$cache_dir/checksums.txt"
+  mkdir -p "$cache_dir" "$(dirname "$steampipe_binary")"
+  if [ ! -f "$archive_path" ]; then
+    curl --fail --location --silent --show-error \
+      --output "$archive_path" \
+      "https://github.com/turbot/steampipe/releases/download/v${steampipe_version}/${archive}"
+  fi
+  curl --fail --location --silent --show-error \
+    --output "$checksums_path" \
+    "https://github.com/turbot/steampipe/releases/download/v${steampipe_version}/checksums.txt"
+
+  expected="$cache_dir/${archive}.sha256"
+  grep "  ${archive}$" "$checksums_path" >"$expected" || fail "checksum missing for $archive"
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$cache_dir" && sha256sum --check "$(basename "$expected")")
+  else
+    command -v shasum >/dev/null 2>&1 || fail "required command not found: sha256sum or shasum"
+    (cd "$cache_dir" && shasum -a 256 --check "$(basename "$expected")")
+  fi
+
+  extract_dir=$(mktemp -d "$state_dir/steampipe.XXXXXX")
+  if [ "$os" = darwin ]; then
+    command -v unzip >/dev/null 2>&1 || fail "required command not found: unzip"
+    unzip -q "$archive_path" -d "$extract_dir"
+  else
+    tar -xzf "$archive_path" -C "$extract_dir"
+  fi
+  mv "$extract_dir/steampipe" "$steampipe_binary"
+  rmdir "$extract_dir"
+  chmod 700 "$steampipe_binary"
+  got_version=$($steampipe_binary --version)
+  case $got_version in
+    *"v${steampipe_version}"*) ;;
+    *) fail "Steampipe version check failed" ;;
+  esac
+}
+
+mkdir -p "$config_dir" "$plugin_dir" "$state_dir"
 chmod 700 "$state_dir" "$home_dir" "$home_dir/.steampipe" "$config_dir" "$plugin_dir"
+install_steampipe
 plugin_binary="$plugin_dir/youtrack.plugin"
 (cd "$repo_dir" && go build -o "$plugin_binary" .)
 chmod 700 "$plugin_binary"
@@ -68,19 +119,19 @@ umask 077
 cat >"$config_dir/youtrack.spc" <<EOF
 connection "youtrack" {
   plugin   = "local/youtrack"
-  base_url = "http://youtrack:8080"
+  base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
   token    = "${YOUTRACK_TOKEN}"
 }
 
 connection "youtrack_secondary" {
   plugin   = "local/youtrack"
-  base_url = "http://youtrack:8080"
+  base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
   token    = "${YOUTRACK_TOKEN}"
 }
 
 connection "youtrack_invalid" {
   plugin   = "local/youtrack"
-  base_url = "http://youtrack:8080"
+  base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
   token    = "e2e-intentionally-invalid"
 }
 
@@ -96,6 +147,7 @@ export E2E_UID=${E2E_UID:-$(id -u)}
 export E2E_GID=${E2E_GID:-$(id -g)}
 
 cleanup() {
+	"$steampipe_binary" --install-dir "$home_dir/.steampipe" service stop --force >/dev/null 2>&1 || true
   for resource in \
     "${agile_id:+/api/agiles/$agile_id}" \
     "${saved_query_id:+/api/savedQueries/$saved_query_id}" \
@@ -103,6 +155,9 @@ cleanup() {
     "${project_id:+/api/admin/projects/$project_id}"; do
     [ -n "$resource" ] && api DELETE "$resource" >/dev/null 2>&1 || true
   done
+  if [ -n "${work_item_type_id:-}" ]; then
+    api DELETE "/api/admin/timeTrackingSettings/workItemTypes/$work_item_type_id" >/dev/null 2>&1 || true
+  fi
   compose down --remove-orphans >/dev/null 2>&1 || true
   if [ -n "$(compose ps -q 2>/dev/null)" ]; then
     printf '%s\n' "e2e: compose containers remain after cleanup" >&2
@@ -123,6 +178,13 @@ project_response=$(api POST '/api/admin/projects?fields=id,name,shortName' "$(jq
   --arg leaderID "$leader_id" \
   '{name: $name, shortName: $shortName, leader: {id: $leaderID}}')")
 project_id=$(printf '%s' "$project_response" | jq -er '.id')
+
+work_item_type_response=$(api POST \
+  '/api/admin/timeTrackingSettings/workItemTypes?fields=id,name,autoAttached' \
+  "$(jq -n --arg name "E2E work item type $run_suffix" '{name: $name, autoAttached: true}')")
+work_item_type_id=$(printf '%s' "$work_item_type_response" | jq -er '.id')
+api POST "/api/admin/projects/$project_id/timeTrackingSettings?fields=enabled,workItemTypes(id,name,autoAttached)" \
+  '{"enabled":true}' >/dev/null
 
 # Seed 101 issues so the list path must cross the client's 100-row page boundary.
 issue_number=1
@@ -163,13 +225,9 @@ agile_response=$(api POST '/api/agiles?fields=id,name' "$(jq -n \
   '{name: $name, projects: [{id: $project_id}]}')")
 agile_id=$(printf '%s' "$agile_response" | jq -er '.id')
 
-work_item_supported=1
-if ! api POST "/api/issues/$first_issue_id/timeTracking/workItems?fields=id,text,duration(minutes)" \
-  "$(jq -n --arg text "E2E work item $run_suffix" \
-    '{text: $text, date: (now * 1000 | floor), duration: {minutes: 60}}')" >/dev/null 2>&1; then
-  work_item_supported=0
-  skip "work-item creation rejected; time tracking must be enabled and a work-item type configured for the project"
-fi
+api POST "/api/issues/$first_issue_id/timeTracking/workItems?fields=id,text,duration(minutes),type(id,name)" \
+  "$(jq -n --arg text "E2E work item $run_suffix" --arg type_id "$work_item_type_id" \
+    '{text: $text, date: (now * 1000 | floor), duration: {minutes: 60}, type: {id: $type_id}}')" >/dev/null
 
 # Discover the plugin schema before table-specific checks.
 assert_count "schema discovery" \
@@ -192,7 +250,7 @@ assert_count "tag" "select count(*)::int as result from youtrack.youtrack_tag wh
 assert_count "saved query" "select count(*)::int as result from youtrack.youtrack_saved_query where id = '$saved_query_id';"
 assert_count "article" "select count(*)::int as result from youtrack.youtrack_article where id = '$article_id';"
 assert_count "agile" "select count(*)::int as result from youtrack.youtrack_agile where id = '$agile_id';"
-[ "$work_item_supported" -eq 0 ] || assert_count "work item" \
+assert_count "work item" \
   "select count(*)::int as result from youtrack.youtrack_issue_work_item where issue_id = '$first_issue_id';"
 
 # The same binary is loaded as two named connections; both schemas must remain usable.

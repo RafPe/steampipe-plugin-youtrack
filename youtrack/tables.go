@@ -13,16 +13,23 @@ func resourceDefinitions() []resourceDefinition {
 		{name: "youtrack_user", description: "Users visible through the current YouTrack API.", path: []string{"users"}, fields: []string{"id,login,name,fullName,email,banned,online"}, columns: userColumns(), getKeys: []string{"id", "login"}},
 		{name: "youtrack_group", description: "User groups visible through the current YouTrack API.", path: []string{"groups"}, fields: []string{"id,name,description,users(id,login,fullName)"}, columns: groupColumns(), listKeys: plugin.OptionalColumns([]string{"query"})},
 		{name: "youtrack_tag", description: "Tags visible to the connection user.", path: []string{"tags"}, fields: []string{"id,name,owner(id,login,fullName),untagOnResolve,readSharingSettings,tagSharingSettings,updateSharingSettings"}, columns: tagColumns(), listKeys: plugin.OptionalColumns([]string{"query"})},
-		{name: "youtrack_saved_query", description: "Saved issue searches visible to the connection user.", path: []string{"savedQueries"}, fields: []string{"id,name,query,owner(id,login,fullName),readSharingSettings,updateSharingSettings"}, columns: ownerColumns()},
+		{name: "youtrack_saved_query", description: "Saved issue searches visible to the connection user.", path: []string{"savedQueries"}, fields: []string{"id,name,query,owner(id,login,fullName),readSharingSettings,updateSharingSettings"}, columns: savedQueryColumns()},
 		{name: "youtrack_article", description: "Knowledge base articles visible to the connection user.", path: []string{"articles"}, fields: []string{"id,idReadable,summary,content,project(id,name,shortName),reporter(id,login,fullName),created,updated,tags(id,name)"}, columns: articleColumns(), getKeys: []string{"id", "id_readable"}},
-		{name: "youtrack_agile", description: "Agile boards visible to the connection user.", path: []string{"agiles"}, fields: []string{"id,name,owner(id,login,fullName),projects(id,name,shortName),sprints(id,name),currentSprint(id,name)"}, columns: ownerColumns()},
+		{name: "youtrack_agile", description: "Agile boards visible to the connection user.", path: []string{"agiles"}, fields: []string{"id,name,owner(id,login,fullName),projects(id,name,shortName),sprints(id,name),currentSprint(id,name)"}, columns: agileColumns()},
 		{name: "youtrack_issue_comment", description: "Issue comments visible to the connection user.", path: []string{"issues"}, parentKey: "issue_id", parentPath: []string{"comments"}, fields: []string{"id,text,author(id,login,fullName),created,updated,issue(id,idReadable,summary)"}, columns: commentColumns(), listKeys: plugin.SingleColumn("issue_id")},
 		{name: "youtrack_issue_work_item", description: "Issue work items visible to the connection user.", path: []string{"workItems"}, fields: []string{"id,text,author(id,login,fullName),creator(id,login,fullName),date,created,updated,duration(minutes,presentation),issue(id,idReadable,summary)"}, columns: workItemColumns(), listKeys: plugin.OptionalColumns([]string{"issue_id", "query", "start_date", "end_date", "start", "end", "created_start", "created_end", "updated_start", "updated_end", "author_filter", "creator_filter"})},
 	}
 }
 
 func projectColumns() []*plugin.Column {
-	return []*plugin.Column{{Name: "short_name", Type: proto.ColumnType_STRING, Description: "The project's short name."}, {Name: "description", Type: proto.ColumnType_STRING, Description: "The project description."}}
+	return []*plugin.Column{
+		{Name: "name", Type: proto.ColumnType_STRING, Description: "The project name."},
+		{Name: "short_name", Type: proto.ColumnType_STRING, Description: "The project's short name."},
+		{Name: "description", Type: proto.ColumnType_STRING, Description: "The project description."},
+		{Name: "leader", Type: proto.ColumnType_JSON, Description: "The project leader."},
+		{Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the project was created.", Transform: transform.FromField("Created").Transform(milliseconds)},
+		{Name: "updated", Type: proto.ColumnType_TIMESTAMP, Description: "When the project was last updated.", Transform: transform.FromField("Updated").Transform(milliseconds)},
+	}
 }
 
 func issueColumns() []*plugin.Column {
@@ -47,25 +54,66 @@ func issueColumns() []*plugin.Column {
 }
 
 func userColumns() []*plugin.Column {
-	return []*plugin.Column{{Name: "login", Type: proto.ColumnType_STRING, Description: "The user login."}, {Name: "full_name", Type: proto.ColumnType_STRING, Description: "The user's full name."}, {Name: "email", Type: proto.ColumnType_STRING, Description: "The user's email when visible."}}
+	return []*plugin.Column{
+		{Name: "name", Type: proto.ColumnType_STRING, Description: "The user name."},
+		{Name: "login", Type: proto.ColumnType_STRING, Description: "The user login."},
+		{Name: "full_name", Type: proto.ColumnType_STRING, Description: "The user's full name."},
+		{Name: "email", Type: proto.ColumnType_STRING, Description: "The user's email when visible; null when hidden or unset."},
+		{Name: "banned", Type: proto.ColumnType_BOOL, Description: "Whether the user account is banned; null when not visible."},
+		{Name: "online", Type: proto.ColumnType_BOOL, Description: "Whether the user is online; null when not visible."},
+	}
 }
 func groupColumns() []*plugin.Column {
 	return []*plugin.Column{
+		{Name: "name", Type: proto.ColumnType_STRING, Description: "The group name."},
 		{Name: "description", Type: proto.ColumnType_STRING, Description: "The group description."},
+		{Name: "users", Type: proto.ColumnType_JSON, Description: "Users visible in the group."},
 		{Name: "query", Type: proto.ColumnType_STRING, Description: "An exact group query pushed to the API.", Transform: transform.FromQual("query")},
 	}
 }
-func ownerColumns() []*plugin.Column {
-	return []*plugin.Column{{Name: "owner", Type: proto.ColumnType_JSON, Description: "The owner of the resource."}}
-}
 func tagColumns() []*plugin.Column {
-	return append(ownerColumns(), &plugin.Column{Name: "query", Type: proto.ColumnType_STRING, Description: "An exact tag query pushed to the API.", Transform: transform.FromQual("query")})
+	return []*plugin.Column{
+		{Name: "name", Type: proto.ColumnType_STRING, Description: "The tag name."},
+		{Name: "owner", Type: proto.ColumnType_JSON, Description: "The tag owner."},
+		{Name: "untag_on_resolve", Type: proto.ColumnType_BOOL, Description: "Whether the tag is removed when an issue is resolved."},
+		{Name: "read_sharing_settings", Type: proto.ColumnType_JSON, Description: "The tag visibility settings."},
+		{Name: "tag_sharing_settings", Type: proto.ColumnType_JSON, Description: "The settings controlling who can use the tag."},
+		{Name: "update_sharing_settings", Type: proto.ColumnType_JSON, Description: "The settings controlling who can update the tag."},
+		{Name: "query", Type: proto.ColumnType_STRING, Description: "An exact tag query pushed to the API.", Transform: transform.FromQual("query")},
+	}
+}
+func savedQueryColumns() []*plugin.Column {
+	return []*plugin.Column{
+		{Name: "name", Type: proto.ColumnType_STRING, Description: "The saved query name."},
+		{Name: "query_text", Type: proto.ColumnType_STRING, Description: "The stored YouTrack issue query.", Transform: transform.FromField("Query")},
+		{Name: "owner", Type: proto.ColumnType_JSON, Description: "The saved query owner."},
+		{Name: "read_sharing_settings", Type: proto.ColumnType_JSON, Description: "The saved query visibility settings."},
+		{Name: "update_sharing_settings", Type: proto.ColumnType_JSON, Description: "The settings controlling who can update the saved query."},
+	}
 }
 func articleColumns() []*plugin.Column {
-	return []*plugin.Column{{Name: "id_readable", Type: proto.ColumnType_STRING, Description: "The human-readable article ID.", Transform: transform.FromField("IDReadable")}, {Name: "summary", Type: proto.ColumnType_STRING, Description: "The article summary."}, {Name: "content", Type: proto.ColumnType_STRING, Description: "The article content."}, {Name: "project", Type: proto.ColumnType_JSON, Description: "The article project."}, {Name: "tags", Type: proto.ColumnType_JSON, Description: "Article tags."}}
+	return []*plugin.Column{
+		{Name: "id_readable", Type: proto.ColumnType_STRING, Description: "The human-readable article ID.", Transform: transform.FromField("IDReadable")},
+		{Name: "summary", Type: proto.ColumnType_STRING, Description: "The article summary."},
+		{Name: "content", Type: proto.ColumnType_STRING, Description: "The article content."},
+		{Name: "project", Type: proto.ColumnType_JSON, Description: "The article project."},
+		{Name: "reporter", Type: proto.ColumnType_JSON, Description: "The article reporter."},
+		{Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the article was created.", Transform: transform.FromField("Created").Transform(milliseconds)},
+		{Name: "updated", Type: proto.ColumnType_TIMESTAMP, Description: "When the article was last updated.", Transform: transform.FromField("Updated").Transform(milliseconds)},
+		{Name: "tags", Type: proto.ColumnType_JSON, Description: "Article tags."},
+	}
+}
+func agileColumns() []*plugin.Column {
+	return []*plugin.Column{
+		{Name: "name", Type: proto.ColumnType_STRING, Description: "The agile board name."},
+		{Name: "owner", Type: proto.ColumnType_JSON, Description: "The agile board owner."},
+		{Name: "projects", Type: proto.ColumnType_JSON, Description: "Projects associated with the board."},
+		{Name: "sprints", Type: proto.ColumnType_JSON, Description: "Sprints visible on the board."},
+		{Name: "current_sprint", Type: proto.ColumnType_JSON, Description: "The board's current sprint."},
+	}
 }
 func commentColumns() []*plugin.Column {
-	return []*plugin.Column{{Name: "issue_id", Type: proto.ColumnType_STRING, Description: "The required parent issue ID.", Transform: transform.FromQual("issue_id")}, {Name: "text", Type: proto.ColumnType_STRING, Description: "The comment text."}, {Name: "author", Type: proto.ColumnType_JSON, Description: "The comment author."}, {Name: "issue", Type: proto.ColumnType_JSON, Description: "The parent issue."}, {Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the comment was created.", Transform: transform.FromField("Created").Transform(milliseconds)}}
+	return []*plugin.Column{{Name: "issue_id", Type: proto.ColumnType_STRING, Description: "The required parent issue ID.", Transform: transform.FromQual("issue_id")}, {Name: "text", Type: proto.ColumnType_STRING, Description: "The comment text."}, {Name: "author", Type: proto.ColumnType_JSON, Description: "The comment author."}, {Name: "issue", Type: proto.ColumnType_JSON, Description: "The parent issue."}, {Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the comment was created.", Transform: transform.FromField("Created").Transform(milliseconds)}, {Name: "updated", Type: proto.ColumnType_TIMESTAMP, Description: "When the comment was last updated.", Transform: transform.FromField("Updated").Transform(milliseconds)}}
 }
 func workItemColumns() []*plugin.Column {
 	return []*plugin.Column{

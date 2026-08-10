@@ -1,20 +1,38 @@
 # youtrack_tag
 
-Returns tags visible to the permanent-token user. Missing optional YouTrack values are SQL null; nested or polymorphic values remain JSONB and `raw` preserves the requested representation.
-
-The `id` qualifier uses the single-resource endpoint. Collection reads use `$top`/`$skip`, honor SQL limits and cancellation, and require the corresponding YouTrack read permission.
+Returns tags visible to the permanent-token user, including their separate visibility, use, and update sharing settings.
 
 ## Columns
 
-Every row includes `id`, resource-specific stable scalar columns, nested JSONB where flattening would lose information, and `raw`. Timestamp columns are converted from YouTrack Unix milliseconds to PostgreSQL timestamps.
+| Column | Type | Nullable behavior | Description |
+| --- | --- | --- | --- |
+| `id` | text | Normally non-null. | Tag database ID. |
+| `raw` | jsonb | Normally non-null. | Complete requested YouTrack representation. |
+| `name` | text | Empty if omitted by YouTrack. | Tag name. |
+| `owner` | jsonb | Null when unset or not visible. | Tag owner object. |
+| `untag_on_resolve` | boolean | Null when not visible. | Whether YouTrack removes the tag when an issue is resolved. |
+| `read_sharing_settings` | jsonb | Null when unavailable. | Settings controlling tag visibility. |
+| `tag_sharing_settings` | jsonb | Null when unavailable. | Settings controlling who may use the tag. |
+| `update_sharing_settings` | jsonb | Null when unavailable. | Settings controlling who may update the tag. |
+| `query` | text | Null unless supplied as a qualifier. | Control column containing the exact tag-name search sent to YouTrack. |
 
-## Examples
+## Querying
+
+Exact `id` equality uses the single-tag endpoint; only database IDs are accepted. Exact `query` is passed verbatim to YouTrack's tag-name search. `name =` remains a local predicate because the API search is not documented as exact equality.
 
 ```sql
-select * from youtrack_tag where id = 'example-id';
+select id, name, owner, untag_on_resolve
+from youtrack_tag
+where query = 'release'
+order by name;
 ```
 
 ```sql
-select id, name from youtrack_tag limit 20;
+select name, read_sharing_settings, tag_sharing_settings
+from youtrack_tag
+where id = '6-42';
 ```
 
+## Permissions
+
+Lists contain tags visible to the current user. A specific tag is visible to its owner or users covered by its sharing configuration; visibility, use, and update access are independent.

@@ -16,37 +16,49 @@ import (
 )
 
 type resource struct {
-	ID            string          `json:"id"`
-	IDReadable    string          `json:"idReadable"`
-	Name          string          `json:"name"`
-	ShortName     string          `json:"shortName"`
-	Login         string          `json:"login"`
-	FullName      string          `json:"fullName"`
-	Email         string          `json:"email"`
-	Summary       string          `json:"summary"`
-	Description   *string         `json:"description"`
-	Text          *string         `json:"text"`
-	Content       *string         `json:"content"`
-	Project       json.RawMessage `json:"project"`
-	ProjectID     string          `json:"-"`
-	Reporter      json.RawMessage `json:"reporter"`
-	Updater       json.RawMessage `json:"updater"`
-	Author        json.RawMessage `json:"author"`
-	Creator       json.RawMessage `json:"creator"`
-	Owner         json.RawMessage `json:"owner"`
-	Tags          json.RawMessage `json:"tags"`
-	CustomFields  json.RawMessage `json:"customFields"`
-	Created       *int64          `json:"created"`
-	Updated       *int64          `json:"updated"`
-	Resolved      *int64          `json:"resolved"`
-	IsDraft       bool            `json:"isDraft"`
-	CommentsCount int64           `json:"commentsCount"`
-	Votes         int64           `json:"votes"`
-	Duration      json.RawMessage `json:"duration"`
-	Date          *int64          `json:"date"`
-	Issue         json.RawMessage `json:"issue"`
-	IssueID       string          `json:"-"`
-	Raw           json.RawMessage `json:"-"`
+	ID                    string          `json:"id"`
+	IDReadable            string          `json:"idReadable"`
+	Name                  string          `json:"name"`
+	ShortName             string          `json:"shortName"`
+	Login                 string          `json:"login"`
+	FullName              string          `json:"fullName"`
+	Email                 *string         `json:"email"`
+	Summary               string          `json:"summary"`
+	Description           *string         `json:"description"`
+	Text                  *string         `json:"text"`
+	Content               *string         `json:"content"`
+	Project               json.RawMessage `json:"project"`
+	ProjectID             string          `json:"-"`
+	Reporter              json.RawMessage `json:"reporter"`
+	Updater               json.RawMessage `json:"updater"`
+	Author                json.RawMessage `json:"author"`
+	Creator               json.RawMessage `json:"creator"`
+	Owner                 json.RawMessage `json:"owner"`
+	Leader                json.RawMessage `json:"leader"`
+	Users                 json.RawMessage `json:"users"`
+	Tags                  json.RawMessage `json:"tags"`
+	Projects              json.RawMessage `json:"projects"`
+	Sprints               json.RawMessage `json:"sprints"`
+	CurrentSprint         json.RawMessage `json:"currentSprint"`
+	CustomFields          json.RawMessage `json:"customFields"`
+	ReadSharingSettings   json.RawMessage `json:"readSharingSettings"`
+	TagSharingSettings    json.RawMessage `json:"tagSharingSettings"`
+	UpdateSharingSettings json.RawMessage `json:"updateSharingSettings"`
+	Created               *int64          `json:"created"`
+	Updated               *int64          `json:"updated"`
+	Resolved              *int64          `json:"resolved"`
+	IsDraft               bool            `json:"isDraft"`
+	Banned                *bool           `json:"banned"`
+	Online                *bool           `json:"online"`
+	UntagOnResolve        *bool           `json:"untagOnResolve"`
+	CommentsCount         int64           `json:"commentsCount"`
+	Votes                 int64           `json:"votes"`
+	Query                 string          `json:"query"`
+	Duration              json.RawMessage `json:"duration"`
+	Date                  *int64          `json:"date"`
+	Issue                 json.RawMessage `json:"issue"`
+	IssueID               string          `json:"-"`
+	Raw                   json.RawMessage `json:"-"`
 }
 
 // UnmarshalJSON decodes a resource and retains its original JSON representation.
@@ -270,7 +282,6 @@ func queryClient(d *plugin.QueryData) (*client.Client, error) {
 func commonColumns() []*plugin.Column {
 	return []*plugin.Column{
 		{Name: "id", Type: proto.ColumnType_STRING, Description: "The database ID of the resource.", Transform: transform.FromField("ID")},
-		{Name: "name", Type: proto.ColumnType_STRING, Description: "The display name of the resource."},
 		{Name: "raw", Type: proto.ColumnType_JSON, Description: "The complete requested YouTrack representation.", Transform: transform.FromField("Raw")},
 	}
 }

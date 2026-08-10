@@ -1,10 +1,13 @@
 # End-to-end tests
 
-The E2E harness uses YouTrack Server `2026.1.13874` and Steampipe `0.22.0`.
-Both images are pinned so an upstream `latest` tag cannot silently change the
-test. The test builds the plugin from the current checkout, installs that exact
-binary in an isolated Steampipe home, seeds a project and issue through the
-supported YouTrack REST API, and verifies them through real Steampipe SQL.
+The E2E harness uses the pinned YouTrack Server `2026.1.13874` container and
+the official Steampipe `2.3.2` release binary. Turbot stopped publishing its
+official Steampipe container after `0.22.0`, so the harness downloads the
+platform-specific `2.3.2` archive and verifies its SHA-256 checksum before use.
+The cached binary runs with an isolated Steampipe install directory. The test
+builds the plugin from the current checkout, installs that exact binary, seeds
+resources through supported YouTrack REST APIs, and verifies them through real
+Steampipe SQL.
 
 ## One-time YouTrack setup
 
@@ -44,8 +47,9 @@ Prerequisites are Docker Compose, Go, curl, and jq. The run fails before making
 changes if any prerequisite or the token is missing. Every run uses a unique
 project name and creates 101 issues to cross the default API page boundary. It
 also seeds supported REST resources for comments, tags, saved queries,
-articles, agile boards, and (when project time tracking is configured) work
-items. Real Steampipe SQL checks cover schema discovery, identifiers, issue
+articles, agile boards, and work items. The harness creates a temporary global
+work-item type, enables project time tracking, creates a typed work item, and
+removes the type during cleanup. Real Steampipe SQL checks cover schema discovery, identifiers, issue
 query pushdown, pagination, null values, joins, two named connections, invalid
 credentials, and an unavailable server. The harness deletes all resources it
 created, stops the Compose services, checks that no project containers remain,
@@ -53,18 +57,18 @@ and removes local credentials and plugin artifacts. Negative-test logs remain
 under the ignored `.state` directory for diagnostics. The initialized YouTrack
 volumes remain so the manual setup is not repeated.
 
-### Deterministic skips and preflights
+### Deterministic setup and preflights
 
 YouTrack Server 2026.1 provides supported current collection endpoints at
 `GET /api/users` and `GET /api/groups`. The harness requires both endpoints and
 never calls deprecated `/hub` internals; `GET /api/users/me` verifies the token
 and selects the new project's leader.
 
-Work-item creation is supported only after time tracking is enabled and at
-least one work-item type is configured for the test project. The harness tries
-the documented issue work-item endpoint and reports that prerequisite as a
-skip if the server rejects it. All other listed resource creation failures are
-test failures rather than silent coverage gaps.
+Work-item creation requires project time tracking and an attached work-item
+type. The harness configures both through the current `/api/admin` resources;
+failure to configure or query work items is a test failure rather than a skip.
+The E2E permanent token therefore needs project-update and work-item-type
+administration permissions in addition to the scopes used for other resources.
 
 The two negative connection checks require the plugin to return authentication
 and network errors without leaking the valid token. They intentionally use a

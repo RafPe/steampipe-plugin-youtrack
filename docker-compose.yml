@@ -17,20 +17,6 @@ services:
       retries: 60
       start_period: 60s
 
-  steampipe:
-    image: turbot/steampipe:0.22.0
-    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
-    environment:
-      HOME: /e2e/home
-      STEAMPIPE_INSTALL_DIR: /e2e/home/.steampipe
-    volumes:
-      - ./tests/e2e/.state/home:/e2e/home
-    working_dir: /e2e/home
-    depends_on:
-      youtrack:
-        condition: service_healthy
-    entrypoint: ["steampipe"]
-
 volumes:
   youtrack_data:
   youtrack_conf:

@@ -62,7 +62,7 @@ that are expected to work through the Steampipe plugin protocol.
 
 | Component | Version | Status | Notes |
 | --- | --- | --- | --- |
-| Steampipe CLI | 2.3.2 | Verified | Used for real-process local and E2E queries. |
+| Steampipe CLI | 2.3.2 | Verified | Manually verified and pinned by the real-process E2E harness. |
 | Steampipe Plugin SDK | 6.0.0 | Verified | Direct build dependency. |
 | YouTrack Cloud | Current REST API | Supported | Uses permanent-token authentication and `/api` resources. |
 | YouTrack Server | 2026.1 or later | Supported | Required for current `/api/users` and `/api/groups` resources. |
@@ -75,7 +75,7 @@ runtime versions and known bootstrap constraint.
 
 ## Limitations
 
-Results reflect the token user's permissions. YouTrack Server 2026.1 or later is required for the current `/api/users` and `/api/groups` resources; the plugin never falls back to deprecated Hub endpoints. The pinned E2E image requires a one-time supported first-run wizard and manual permanent-token creation.
+Results reflect the token user's permissions. YouTrack Server 2026.1 or later is required for the current `/api/users` and `/api/groups` resources; the plugin never falls back to deprecated Hub endpoints. The pinned YouTrack E2E container requires a one-time supported first-run wizard and manual permanent-token creation. Steampipe 2.3.2 runs from its official checksum-verified release archive because Turbot no longer publishes an official current container image.
 
 ## Contributing
 

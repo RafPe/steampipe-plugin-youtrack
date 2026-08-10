@@ -1,20 +1,39 @@
 # youtrack_article
 
-Returns knowledge-base articles visible to the permanent-token user. Missing optional YouTrack values are SQL null; nested or polymorphic values remain JSONB and `raw` preserves the requested representation.
-
-The `id` qualifier uses the single-resource endpoint. Collection reads use `$top`/`$skip`, honor SQL limits and cancellation, and require the corresponding YouTrack read permission.
+Returns knowledge-base articles visible to the permanent-token user. Nested projects, reporters, and tags remain JSONB, and timestamps are converted from Unix milliseconds.
 
 ## Columns
 
-Every row includes `id`, resource-specific stable scalar columns, nested JSONB where flattening would lose information, and `raw`. Timestamp columns are converted from YouTrack Unix milliseconds to PostgreSQL timestamps.
+| Column | Type | Nullable behavior | Description |
+| --- | --- | --- | --- |
+| `id` | text | Normally non-null. | Article database ID. |
+| `raw` | jsonb | Normally non-null. | Complete requested YouTrack representation. |
+| `id_readable` | text | Empty if omitted by YouTrack. | Human-readable article ID, such as `NP-A-1`. |
+| `summary` | text | Empty when null or omitted by YouTrack. | Article summary. |
+| `content` | text | Null when unset. | Article content. |
+| `project` | jsonb | Null when unavailable. | Parent project object. |
+| `reporter` | jsonb | Null when unset or not visible. | Article reporter object. |
+| `created` | timestamp with time zone | Null when unavailable. | Article creation time. |
+| `updated` | timestamp with time zone | Null when unavailable. | Last article update time. |
+| `tags` | jsonb | Null when unavailable; may be an empty array. | Tags attached to the article. |
 
-## Examples
+## Querying
+
+Exact `id` or `id_readable` equality uses the single-article endpoint. Database IDs and readable article IDs are accepted. The collection documents no global filter, so predicates on summary, content, project, reporter, tags, and timestamps remain local.
 
 ```sql
-select * from youtrack_article where id = 'example-id';
+select id_readable, summary, project ->> 'shortName' as project, updated
+from youtrack_article
+order by updated desc
+limit 20;
 ```
 
 ```sql
-select id, name from youtrack_article limit 20;
+select id, id_readable, summary, content
+from youtrack_article
+where id_readable = 'NP-A-1';
 ```
 
+## Permissions
+
+Article visibility restrictions apply. Specific access is available to permitted users and groups, users with **Override Visibility Restrictions**, and the reporter exception documented by YouTrack.
