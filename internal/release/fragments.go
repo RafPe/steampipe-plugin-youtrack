@@ -1,0 +1,148 @@
+package release
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Changie fragment kinds configured in .changie.yaml, in their declared
+// order. A fragment's "kind" field must be an exact, case-sensitive match
+// for one of these.
+const (
+	kindAdded        = "Added"
+	kindChanged      = "Changed"
+	kindDeprecated   = "Deprecated"
+	kindRemoved      = "Removed"
+	kindFixed        = "Fixed"
+	kindSecurity     = "Security"
+	kindDependencies = "Dependencies"
+)
+
+var validFragmentKinds = map[string]bool{
+	kindAdded:        true,
+	kindChanged:      true,
+	kindDeprecated:   true,
+	kindRemoved:      true,
+	kindFixed:        true,
+	kindSecurity:     true,
+	kindDependencies: true,
+}
+
+// fragment mirrors the subset of a Changie fragment's YAML shape (see
+// task-1-report.md) that validation needs: kind and body. The time field is
+// ignored (used by Changie only for ordering, never for validation).
+type fragment struct {
+	Kind string `yaml:"kind"`
+	Body string `yaml:"body"`
+}
+
+// fragmentCandidates scans changedFiles for entries that reference a
+// changelog fragment under fragmentsDir, and rejects path-safety violations
+// (absolute paths anywhere in changedFiles, or ".." traversal that escapes
+// fragmentsDir). Returned paths are cleaned, repo-relative, and directly
+// usable to open the file. Only ".yaml" files are treated as fragments;
+// non-YAML entries under fragmentsDir (e.g. ".gitkeep") are ignored.
+func fragmentCandidates(fragmentsDir string, changedFiles []string) ([]string, error) {
+	cleanDir := filepath.Clean(strings.TrimSpace(fragmentsDir))
+	if cleanDir == "" || cleanDir == "." {
+		return nil, fmt.Errorf("fragments directory must not be empty")
+	}
+	prefix := cleanDir + string(filepath.Separator)
+
+	var candidates []string
+	for _, f := range changedFiles {
+		if f == "" {
+			return nil, fmt.Errorf("changed_files entry must not be empty")
+		}
+		if filepath.IsAbs(f) {
+			return nil, fmt.Errorf("changed_files entries must be repo-relative paths, got %q", f)
+		}
+		if !strings.HasPrefix(f, prefix) {
+			continue // not under the fragments dir; irrelevant to fragment validation
+		}
+		cleaned := filepath.Clean(f)
+		if cleaned != cleanDir && !strings.HasPrefix(cleaned, prefix) {
+			return nil, fmt.Errorf("fragment path %q escapes the fragments directory", f)
+		}
+		if filepath.Ext(cleaned) != ".yaml" {
+			continue // e.g. the fragments dir's .gitkeep
+		}
+		candidates = append(candidates, cleaned)
+	}
+	return candidates, nil
+}
+
+// validateFragmentFile reads and validates a single fragment file at
+// relPath (as returned by fragmentCandidates): it must resolve (following
+// symlinks) to a location still inside fragmentsDir, exist on disk, parse
+// as YAML, use a known kind, have a non-empty body, and its body must not
+// match an obvious credential shape.
+func validateFragmentFile(fragmentsDir, relPath string) error {
+	realDir, err := filepath.EvalSymlinks(fragmentsDir)
+	if err != nil {
+		return fmt.Errorf("fragments directory %q: %w", fragmentsDir, err)
+	}
+	realFile, err := filepath.EvalSymlinks(relPath)
+	if err != nil {
+		return fmt.Errorf("fragment %q: %w", relPath, err)
+	}
+	if !isWithinDir(realFile, realDir) {
+		return fmt.Errorf("fragment %q escapes the fragments directory", relPath)
+	}
+
+	data, err := os.ReadFile(realFile) // #nosec G304 -- realFile is resolved via EvalSymlinks and containment-checked above
+	if err != nil {
+		return fmt.Errorf("fragment %q: %w", relPath, err)
+	}
+
+	var frag fragment
+	if err := yaml.Unmarshal(data, &frag); err != nil {
+		return fmt.Errorf("fragment %q: invalid yaml", relPath)
+	}
+	if !validFragmentKinds[frag.Kind] {
+		return fmt.Errorf("fragment %q: unknown kind %q", relPath, frag.Kind)
+	}
+	if strings.TrimSpace(frag.Body) == "" {
+		return fmt.Errorf("fragment %q: empty body", relPath)
+	}
+	if containsCredentialShape(frag.Body) {
+		return fmt.Errorf("fragment %q: body appears to contain a credential and was rejected", relPath)
+	}
+	return nil
+}
+
+// isWithinDir reports whether child is a file strictly inside parent (both
+// already resolved to real, symlink-free paths).
+func isWithinDir(child, parent string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return false // child is the directory itself, not a file inside it
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// credentialPatterns match obvious credential shapes that must never appear
+// in a changelog fragment body: classic GitHub personal access tokens,
+// GitHub fine-grained PAT prefixes, and YouTrack permanent tokens.
+var credentialPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`ghp_[A-Za-z0-9]{36}`),
+	regexp.MustCompile(`github_pat_[A-Za-z0-9_]+`),
+	regexp.MustCompile(`perm:\S+`),
+}
+
+func containsCredentialShape(body string) bool {
+	for _, p := range credentialPatterns {
+		if p.MatchString(body) {
+			return true
+		}
+	}
+	return false
+}
