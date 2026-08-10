@@ -1,0 +1,60 @@
+# Changie configuration for steampipe-youtrack.
+#
+# Changie is the SOLE owner of CHANGELOG.md release sections (the
+# "## [x.y.z] - YYYY-MM-DD" headings and everything under them). No other
+# tool or manual edit may add, remove, or rewrite a release section; only
+# `changie batch` may. CHANGELOG.md keeps its intro header (Keep a Changelog
+# + SemVer statement) as the only hand-maintained content; that header lives
+# in .changes/header.tpl.md and is prepended by Changie on every batch.
+#
+# Pinned changie version: v1.25.2
+#   https://github.com/miniscruff/changie/releases/tag/v1.25.2
+# Run via `go run` (no global install) so the version is pinned in one place:
+#   go run github.com/miniscruff/changie@v1.25.2 <command>
+# scripts/changelog-check.sh defines the same pinned version in its
+# changie_version variable; bump both together when upgrading.
+#
+# Add a changelog entry for your change (prompts for kind + body, writes a
+# fragment under .changes/unreleased/):
+#   go run github.com/miniscruff/changie@v1.25.2 new
+# Non-interactively (e.g. scripting):
+#   go run github.com/miniscruff/changie@v1.25.2 new --kind Added --body "..." --interactive=false
+
+changesDir: .changes
+unreleasedDir: unreleased
+headerPath: header.tpl.md
+changelogPath: CHANGELOG.md
+versionExt: md
+
+# Keep a Changelog style version heading: "## [0.1.0] - 2026-08-10".
+versionFormat: "## [{{.VersionNoPrefix}}] - {{.Time.Format \"2006-01-02\"}}"
+kindFormat: "### {{.Kind}}"
+changeFormat: "- {{.Body}}"
+
+# Comparison link, Keep a Changelog style. Resolves once the previous tag
+# exists; for the very first release PreviousVersion defaults to "v0.0.0".
+footerFormat: |
+  [{{.VersionNoPrefix}}]: https://github.com/RafPe/steampipe-youtrack/compare/{{.PreviousVersion}}...{{.Version}}
+
+# Kind order below is authoritative: it is both the prompt order in
+# `changie new` and the section order Changie renders in a batched release.
+kinds:
+  - label: Added
+  - label: Changed
+  - label: Deprecated
+  - label: Removed
+  - label: Fixed
+  - label: Security
+  - label: Dependencies
+
+# Fragment ordering is deterministic: within a batch, changes are sorted by
+# kind (order above), then by fragment timestamp oldest-first. Fragment
+# filenames are Changie's default ({{.Kind}}-{{.Time}}.yaml) and are never
+# read for ordering.
+newlines:
+  afterChangelogHeader: 1
+  beforeChangelogVersion: 1
+  beforeKind: 1
+  afterKind: 1
+  beforeFooterTemplate: 1
+  endOfVersion: 1
