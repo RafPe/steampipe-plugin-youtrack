@@ -1,0 +1,3 @@
+kind: Fixed
+body: Second fixture change, used to exercise multi-kind ordering in scripts/changelog-check.sh.
+time: 2020-01-02T00:00:00Z

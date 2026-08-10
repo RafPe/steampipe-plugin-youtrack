@@ -1,0 +1,3 @@
+kind: Added
+body: Fixture change used only by scripts/changelog-check.sh; not a real changelog entry.
+time: 2020-01-01T00:00:00Z
