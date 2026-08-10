@@ -53,7 +53,7 @@ aggregations, identifier lookups, and multi-table joins.
 
 ## Development
 
-Use `make test`, `make test-race`, `make test-contract`, `make coverage`, `make lint`, `make build`, or the complete local CI equivalent `make check`. The coverage gate requires 100% statement coverage in first-party testable packages. See [E2E testing](docs/e2e.md) for the pinned real YouTrack and Steampipe flow.
+Use `make test`, `make test-race`, `make test-contract`, `make test-integration`, `make coverage`, `make lint`, `make build`, or the complete local CI equivalent `make check`. The integration suite crosses the SDK hydration and real HTTP transport boundaries; the coverage gate requires 100% statement coverage in first-party testable packages. See [E2E testing](docs/e2e.md) for the pinned real YouTrack and Steampipe flow.
 
 ## Compatibility
 

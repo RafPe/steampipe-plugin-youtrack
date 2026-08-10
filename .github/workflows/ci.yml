@@ -23,6 +23,8 @@ jobs:
         run: make test
       - name: Contract tests
         run: make test-contract
+      - name: Integration tests
+        run: make test-integration
       - name: Coverage
         run: make coverage
       - name: Race detector
