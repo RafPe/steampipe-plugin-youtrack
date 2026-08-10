@@ -1,0 +1,246 @@
+name: Prepare Release
+
+# Manual only: computes the next version from merged PRs since the last
+# stable tag, batches the changelog, and opens/updates the automation-owned
+# `release/next` -> `main` PR. Merging that PR (by a human, with a real
+# user token — see the note on release.yml) is what actually publishes.
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Read-only: discovers the previous tag, collects merged PRs since it, and
+  # asks releasectl what the next version should be. Split from `prepare`
+  # so a `release: false` result can cleanly skip all write/PR steps via a
+  # job-level `if:`, rather than threading conditionals through every step.
+  compute:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.next_version.outputs.release }}
+      version: ${{ steps.next_version.outputs.version }}
+      reason: ${{ steps.next_version.outputs.reason }}
+      previous_tag: ${{ steps.prev_tag.outputs.previous_tag }}
+      prs_json_b64: ${{ steps.collect_prs.outputs.prs_json_b64 }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Discover previous stable tag
+        id: prev_tag
+        run: |
+          set -eu
+          # Stable vX.Y.Z tags only (no pre-release/build metadata suffix).
+          previous_tag="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Collect merged PRs since previous tag
+        id: collect_prs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PREVIOUS_TAG: ${{ steps.prev_tag.outputs.previous_tag }}
+        run: |
+          set -eu
+          query="repo:$REPO is:pr is:merged base:main"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            since="$(git log -1 --format=%cI "$PREVIOUS_TAG")"
+            query="$query merged:>=$since"
+          fi
+
+          # -X GET is required: gh api defaults to POST whenever -f/-F is
+          # present, and POST /search/issues doesn't exist (404) -- without
+          # it this silently 404s on every run, never finding any PRs.
+          numbers="$(gh api -X GET search/issues -f "q=$query" --paginate --jq '.items[].number')"
+
+          prs_json="[]"
+          if [ -n "$numbers" ]; then
+            entries=""
+            for number in $numbers; do
+              entry="$(gh api "repos/$REPO/pulls/$number" --jq \
+                '{number: .number, title: .title, url: .html_url, labels: [.labels[].name], head_branch: .head.ref, head_repo: (.head.repo.full_name // "")}')"
+              entries="${entries}${entry}"$'\n'
+            done
+            prs_json="$(printf '%s' "$entries" | jq -s '.')"
+          fi
+
+          # base64-encode: PR titles are attacker-influenced (any fork can
+          # open a PR with an arbitrary title) and job outputs are plain
+          # strings written via a heredoc-style GITHUB_OUTPUT append: a
+          # title containing our delimiter line could inject bogus output
+          # keys. Base64 has no newlines/delimiter characters, so it's
+          # opaque to that mechanism regardless of content.
+          prs_json_b64="$(printf '%s' "$prs_json" | base64 -w0)"
+          echo "prs_json_b64=$prs_json_b64" >> "$GITHUB_OUTPUT"
+
+      - name: Compute next version
+        id: next_version
+        env:
+          PREVIOUS_TAG: ${{ steps.prev_tag.outputs.previous_tag }}
+          PRS_JSON_B64: ${{ steps.collect_prs.outputs.prs_json_b64 }}
+        run: |
+          set -eu
+          prs_json="$(printf '%s' "$PRS_JSON_B64" | base64 -d)"
+          # releasectl strict-decodes with DisallowUnknownFields: project
+          # down to exactly its wirePRInfo contract (number, labels,
+          # head_branch, head_repo). prs_json carries extra fields (title,
+          # url) needed later by the PR-body step — passing it through
+          # unmodified fails every non-empty payload with
+          # `json: unknown field "title"` (exit 2).
+          prs_for_releasectl="$(printf '%s' "$prs_json" | jq '[.[] | {number, labels, head_branch, head_repo}]')"
+          payload="$(jq -n --arg previous_tag "$PREVIOUS_TAG" --argjson prs "$prs_for_releasectl" \
+            '{previous_tag: $previous_tag, prs: $prs}')"
+
+          set +e
+          output="$(printf '%s' "$payload" | go run ./cmd/releasectl next-version \
+            --input - --trusted-repo RafPe/steampipe-youtrack)"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            printf '%s\n' "$output" >&2
+            echo "::error::releasectl next-version failed (exit $status) — a merged PR has invalid release metadata; fix labels before re-running" >&2
+            exit "$status"
+          fi
+
+          release="$(printf '%s' "$output" | jq -r '.release')"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          if [ "$release" = "true" ]; then
+            echo "version=$(printf '%s' "$output" | jq -r '.version')" >> "$GITHUB_OUTPUT"
+          else
+            reason="$(printf '%s' "$output" | jq -r '.reason')"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "::notice::no release prepared: $reason (previous tag: ${PREVIOUS_TAG:-none})"
+          fi
+
+  prepare:
+    needs: compute
+    if: needs.compute.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      VERSION: ${{ needs.compute.outputs.version }}
+      PREVIOUS_TAG: ${{ needs.compute.outputs.previous_tag }}
+      PRS_JSON_B64: ${{ needs.compute.outputs.prs_json_b64 }}
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Validate the release toolchain itself (releasectl build + unit
+      # tests) and the current changelog/template state BEFORE batching —
+      # if either is broken, fail loud here rather than commit a bad batch.
+      - name: Pre-batch validation
+        run: make release-validate changelog-check
+
+      - name: Batch changelog
+        run: |
+          set -eu
+          go run github.com/miniscruff/changie@v1.25.2 batch "$VERSION"
+          go run github.com/miniscruff/changie@v1.25.2 merge
+
+      # release/next is automation-owned: reset it to main's tip every run,
+      # then add exactly one commit with only the generated release files.
+      # This makes the workflow idempotent (same inputs -> same branch
+      # state) without ever touching any other branch.
+      - name: Commit release files to release/next
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B release/next
+          git add CHANGELOG.md .changes
+          if git diff --cached --quiet; then
+            echo "::error::changie batch/merge produced no changes to CHANGELOG.md or .changes — refusing to open an empty release PR" >&2
+            exit 1
+          fi
+          git commit -m "chore: release $VERSION"
+          git push --force origin release/next
+
+      # Written directly to a workspace file (never round-tripped through a
+      # GITHUB_OUTPUT + `${{ }}` splice back into a run: script): PR titles
+      # inside prs_json are attacker-influenced, and re-interpolating them
+      # via `${{ steps.*.outputs.* }}` into a run: block would let one land
+      # in the script text itself before bash ever runs it.
+      - name: Build PR body
+        run: |
+          set -eu
+          prs_json="$(printf '%s' "$PRS_JSON_B64" | base64 -d)"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            compare_line="Compare: https://github.com/$REPO/compare/$PREVIOUS_TAG...main"
+          else
+            compare_line="Compare: (bootstrap release — no previous tag)"
+          fi
+
+          pr_list="$(printf '%s' "$prs_json" | jq -r '
+            map(select(.head_branch != "release/next")) |
+            if length == 0 then "_(no PRs contributed to this release)_"
+            else map("- #\(.number) \(.title) — " + ((.labels | map(select(startswith("release/"))) | join(", ")) // "(no release label)") + " (\(.url))") | join("\n")
+            end')"
+
+          changelog_excerpt="$(sed -n "/^## \[${VERSION#v}\]/,/^## \[/p" CHANGELOG.md | sed '$ { /^## \[/d }')"
+
+          {
+            echo "## Release $VERSION"
+            echo
+            echo "Proposed version: **$VERSION** (previous: ${PREVIOUS_TAG:-none})"
+            echo "$compare_line"
+            echo
+            echo "### Included pull requests"
+            echo "$pr_list"
+            echo
+            echo "### Batched changelog"
+            echo '```markdown'
+            echo "$changelog_excerpt"
+            echo '```'
+            echo
+            echo "### Maintainer checklist"
+            echo "- [ ] Backward compatibility reviewed"
+            echo "- [ ] E2E credentials (the \`e2e\` environment's \`YOUTRACK_TOKEN\`) are configured and current"
+            echo "- [ ] Publication approved — merging this PR triggers \`release.yml\`, which tags and publishes"
+            echo
+            echo "---"
+            echo "_This PR was opened by \`prepare-release.yml\` using \`GITHUB_TOKEN\`. Per GitHub's docs, that means"
+            echo "\`pull_request\`-triggered workflows (CI, PR metadata validation) on this PR queue in an"
+            echo "**approval-required** state — look for the \"Approve and run workflows\" banner in the merge box"
+            echo "if you want to see their results before merging. This is informational only: it is **not**"
+            echo "required for a safe merge, because \`release.yml\`'s own \`verify\` -> \`check\` job independently"
+            echo "re-runs \`make check\` (and E2E) at the merge commit before anything is tagged or published._"
+          } > release-pr-body.md
+
+      - name: Open or update release PR
+        run: |
+          set -eu
+          existing="$(gh pr list --repo "$REPO" --head release/next --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$REPO" --title "chore: release $VERSION" --body-file release-pr-body.md
+            gh pr edit "$existing" --repo "$REPO" --add-label "autorelease: pending"
+          else
+            gh pr create --repo "$REPO" --base main --head release/next \
+              --title "chore: release $VERSION" --label "autorelease: pending" --body-file release-pr-body.md
+          fi

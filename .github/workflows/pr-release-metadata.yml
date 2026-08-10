@@ -1,0 +1,283 @@
+name: PR Release Metadata
+
+# Validates every PR's release metadata (labels, changelog fragments, and
+# the release-PR exemption) via `releasectl validate-pr`. Read-only and
+# secret-free, so it is safe to run unmodified on fork PRs: `pull_request`
+# (never `pull_request_target`) gives fork PRs a read-only GITHUB_TOKEN and
+# no repository secrets, regardless of what `permissions:` below requests.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-pr:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      # Trust class decides which of the two checkout+fragment paths below
+      # runs. A same-repo PR (this repository's own branch -- the author
+      # already has write access) is trusted to supply its own releasectl
+      # code; a fork PR is not, and must still be judged by a base-built
+      # releasectl. head_repo is the server-populated field the exemption
+      # elsewhere also keys off (see below) and cannot be spoofed by
+      # fork-controllable data; comparing it to $GITHUB_REPOSITORY
+      # (the default env GitHub Actions always provides) makes this
+      # comparison itself trustworthy.
+      #
+      # This split exists because "always build releasectl from base.sha"
+      # cannot validate a same-repo PR that changes releasectl's own CLI
+      # contract: base necessarily predates that change, so the base-built
+      # binary rejects the very payload shape the PR's own workflow now
+      # sends. Confirmed live: PR #5
+      # (https://github.com/RafPe/steampipe-youtrack/pull/5, a same-repo
+      # PR that added --trusted-repo) failed with `invalid flags: flag
+      # provided but not defined: -trusted-repo`, because base's
+      # releasectl at the time only registered --input/--fragments-dir.
+      # A fork PR gets no such exemption: it never has write access, so
+      # its releasectl must still be built from base and judged against
+      # that -- possibly older -- contract. That's an unavoidable
+      # limitation of the fork threat model, not a regression: a fork
+      # cannot fix it by changing its own PR, because its own releasectl
+      # code never runs.
+      - name: Determine trust class
+        id: trust
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -eu
+          if [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
+            echo "same_repo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "same_repo=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same-repo path: the PR's own code (including releasectl) is
+      # trusted, so check out the PR's merge ref directly and build+run
+      # releasectl from it below. Fragments are read straight from this
+      # checkout in the validate step -- no blob-fetch scratch-dir dance
+      # needed, because the checkout already has the PR's actual file
+      # content at its normal repo-relative paths.
+      - name: Checkout PR merge ref (same-repo, trusted)
+        if: steps.trust.outputs.same_repo == 'true'
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          persist-credentials: false
+
+      # Fork path (unchanged from before this trust split): checkout the
+      # TRUSTED base commit, not the PR's merge ref. A fork PR could
+      # otherwise modify cmd/releasectl or internal/release itself and
+      # have this job build and run its own tampered validator against
+      # itself. Pinning to base.sha means every fork PR is judged by the
+      # same, untouched releasectl regardless of what the PR branch
+      # contains.
+      #
+      # This is a code/data split, not just a code-only checkout: releasectl
+      # itself (built below) always comes from this trusted base.sha tree.
+      # The PR's *data* -- which files changed and the content of any
+      # changelog fragments -- is fetched separately from the PR head via
+      # the GitHub API (server-side content, see the fragment-fetch step
+      # below), never by checking out or executing anything from the PR
+      # branch itself.
+      - name: Checkout base.sha (fork, untrusted head)
+        if: steps.trust.outputs.same_repo != 'true'
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Build once, from whichever tree the checkout above produced
+      # (PR merge ref for same-repo, base.sha for fork), and invoke the
+      # prebuilt binary everywhere below instead of `go run
+      # ./cmd/releasectl ...`. This also restores releasectl's real exit
+      # codes: `go run` does not preserve a wrapped program's exit code
+      # past 1 (a releasectl exit 2 surfaces to the caller as 1), which
+      # made the exit-code branch below unreachable in practice.
+      - name: Build releasectl
+        run: go build -o "$RUNNER_TEMP/releasectl" ./cmd/releasectl
+
+      - name: Fetch PR metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          set -eu
+
+          # head_repo is the trusted, server-populated signal the release-PR
+          # exemption keys off (see internal/release: isGeneratedReleasePR
+          # requires head_repo == trusted-repo AND head_branch == release/next
+          # AND the autorelease:pending label — all three, never derived from
+          # fork-controllable data alone).
+          #
+          # "removed" files are dropped: a fragment deleted by this PR no
+          # longer exists at HEAD, so there is nothing to fetch or validate
+          # for it, and leaving it in changed_files would reproduce the same
+          # class of bug this fix addresses (releasectl would look for it in
+          # the fragments scratch dir below and fail with a not-found error
+          # for a deletion that is not itself a problem). This applies
+          # equally on the same-repo path, where changed_files still comes
+          # from the PR files API even though fragment content itself is
+          # read from the merge-ref checkout, not fetched.
+          #
+          # The --jq filter deliberately emits one bare JSON object per
+          # line (`.[] | ...`), NOT an array (`[.[] | ...]`): with
+          # --paginate, gh applies --jq to each page separately and
+          # concatenates the raw output, so an array-wrapping filter would
+          # produce multiple top-level JSON arrays end-to-end (`[...][...]`)
+          # on any PR spanning more than one page -- not the single JSON
+          # value `jq -s` (and the --argjson below) require. Slurping once
+          # after pagination is complete is what safely reassembles a
+          # single array regardless of page count.
+          files_json="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | select(.status != "removed") | {filename, sha}' | jq -s '.')"
+          printf '%s' "$files_json" > "$RUNNER_TEMP/pr-files.json"
+          changed_files_json="$(printf '%s' "$files_json" | jq '[.[].filename]')"
+          labels_json="$(printf '%s' "$LABELS_JSON" | jq '[.[].name]')"
+
+          payload="$(jq -n \
+            --argjson labels "$labels_json" \
+            --arg head_branch "$HEAD_BRANCH" \
+            --arg head_repo "$HEAD_REPO" \
+            --argjson changed_files "$changed_files_json" \
+            '{labels: $labels, head_branch: $head_branch, head_repo: $head_repo, changed_files: $changed_files}')"
+          printf '%s' "$payload" > "$RUNNER_TEMP/pr-payload.json"
+
+      # Fork path only: same-repo fragments are already on disk from the
+      # merge-ref checkout above, nothing to fetch. Fetch every changed
+      # fragment file's content AT THE PR HEAD, by its blob sha from the
+      # files listing (rather than the contents API's ?ref=<sha>, which
+      # would need to resolve a ref in a forked head repository) into a
+      # scratch directory that mirrors the fragments directory's normal
+      # repo-relative layout (.changes/unreleased/<name>.yaml). This is
+      # still no fork code execution: git blobs are fetched as opaque
+      # content via the GitHub API, never cloned or run. The layout
+      # matters: fragmentCandidates (internal/release/fragments.go)
+      # matches changed_files entries against --fragments-dir by exact
+      # repo-relative string prefix, and changed_files entries are always
+      # repo-relative (absolute paths are rejected outright) -- so
+      # --fragments-dir must stay the relative ".changes/unreleased", and
+      # the fetched files must live at that same relative path under
+      # whatever directory releasectl is invoked from.
+      - name: Fetch changelog fragments at PR HEAD (fork path only)
+        if: steps.trust.outputs.same_repo != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          files_json="$(cat "$RUNNER_TEMP/pr-files.json")"
+          fragments_scratch="$RUNNER_TEMP/pr-fragments"
+          mkdir -p "$fragments_scratch/.changes/unreleased"
+          # Process substitution (not `... | while ...`) deliberately: a
+          # piped while loop runs in a subshell, so `exit 1` inside it would
+          # only end the subshell, not the step -- a fetch failure would
+          # otherwise leave an empty file at $filename, which
+          # validateFragmentFile would then reject as "unknown kind" (empty
+          # YAML unmarshals to a zero-value fragment), misattributing a
+          # transient API failure to the contributor. Keeping the loop in
+          # the main shell makes `exit 1` here actually fail the step.
+          while IFS= read -r entry; do
+            filename="$(printf '%s' "$entry" | jq -r '.filename')"
+            sha="$(printf '%s' "$entry" | jq -r '.sha')"
+
+            # filename is attacker-controlled (a fork PR chooses its own
+            # changed file paths) and the jq prefilter above
+            # (startswith/endswith) does NOT stop a traversal shape like
+            # ".changes/unreleased/../../escape.yaml" -- it textually
+            # starts with the prefix and ends in ".yaml", so it passes.
+            # Reject any suspicious shape outright (fail closed: abort the
+            # whole run, don't just skip the one entry) before it is ever
+            # used to build a filesystem path. The embedded-newline
+            # alternative needs $newline to be exactly one newline
+            # character: "$(printf '\n')" would NOT work here -- command
+            # substitution strips ALL trailing newlines, so that would
+            # evaluate to the empty string, and *""* (i.e. "**") matches
+            # every filename unconditionally, silently defeating the other
+            # two checks too. Stripping a sentinel "X" off both ends of an
+            # embedded (non-trailing) newline sidesteps that stripping.
+            # Keep this check's twin in scripts/release-contract-check.sh's
+            # C1 section in sync if you change it.
+            newline="$(printf 'X\nX')"
+            newline="${newline#X}"
+            newline="${newline%X}"
+            case "$filename" in
+            *..*|/*|*"$newline"*)
+              echo "::error::suspicious fragment path from PR files API: $filename" >&2
+              exit 1
+              ;;
+            esac
+
+            target="$fragments_scratch/$filename"
+            target_dir="$(dirname "$target")"
+            mkdir -p "$target_dir"
+
+            # Defense in depth alongside the shape check above: resolve
+            # target_dir to its real, symlink-free path and require it to
+            # be fragments_scratch itself or a subdirectory of it. `cd +
+            # pwd -P` rather than `readlink -f`/`-m`: portable to both the
+            # ubuntu-24.04 runner this step executes on and macOS, where
+            # scripts/release-contract-check.sh's mirrored check also runs
+            # locally.
+            resolved_target_dir="$(cd "$target_dir" && pwd -P)"
+            resolved_scratch="$(cd "$fragments_scratch" && pwd -P)"
+            case "$resolved_target_dir" in
+            "$resolved_scratch" | "$resolved_scratch"/*) : ;;
+            *)
+              echo "::error::fragment path escapes the scratch directory: $filename" >&2
+              exit 1
+              ;;
+            esac
+
+            content="$(gh api "repos/$REPO/git/blobs/$sha" --jq '.content')" ||
+              { echo "::error::failed to fetch fragment $filename (blob $sha) at PR HEAD" >&2; exit 1; }
+            printf '%s' "$content" | tr -d '\n' | base64 -d > "$target"
+          done < <(printf '%s' "$files_json" |
+            jq -c '.[] | select(.filename | startswith(".changes/unreleased/") and endswith(".yaml"))')
+
+      - name: Validate PR release metadata
+        env:
+          SAME_REPO: ${{ steps.trust.outputs.same_repo }}
+        run: |
+          set -eu
+
+          # Same-repo: fragments are already on disk at the default working
+          # directory, which the merge-ref checkout populated with the PR's
+          # actual file content at its normal repo-relative paths -- no cd
+          # into a fetched scratch dir needed. Fork: fragments were fetched
+          # into the scratch dir by the previous step.
+          if [ "$SAME_REPO" = "true" ]; then
+            validate_cwd="$PWD"
+          else
+            validate_cwd="$RUNNER_TEMP/pr-fragments"
+          fi
+
+          set +e
+          output="$(
+            cd "$validate_cwd" &&
+            "$RUNNER_TEMP/releasectl" validate-pr \
+              --input "$RUNNER_TEMP/pr-payload.json" \
+              --trusted-repo RafPe/steampipe-youtrack \
+              --fragments-dir .changes/unreleased 2>&1
+          )"
+          status=$?
+          set -e
+
+          printf '%s\n' "$output"
+          if [ "$status" -eq 2 ]; then
+            echo "::error::releasectl reported a usage/input-shape error (exit 2) — this indicates a workflow bug, not a bad PR" >&2
+          fi
+          exit "$status"

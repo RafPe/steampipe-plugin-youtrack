@@ -1,0 +1,341 @@
+name: Release
+
+# Two ways in:
+#   1. `pull_request: closed` on main, gated on merged==true + the
+#      `autorelease: pending` label + head branch/repo matching the
+#      automation-owned release/next branch. The merge itself is a human
+#      action (clicking "Merge" in the UI, or `gh pr merge` with a real
+#      user token) — GitHub's own docs are explicit that events triggered
+#      BY GITHUB_TOKEN do not fire pull_request workflows for the `closed`
+#      activity type at all, so this only fires for an actual human merge,
+#      never as a side effect of prepare-release.yml's own GITHUB_TOKEN
+#      pushes/label calls.
+#   2. `workflow_dispatch` with a `tag` input: recovery mode, to resume a
+#      run that failed after the tag existed but before publish completed.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing vX.Y.Z tag to resume publishing from (recovery mode only)."
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  verify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'main' &&
+       github.event.pull_request.head.ref == 'release/next' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(github.event.pull_request.labels.*.name, 'autorelease: pending'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      merge_sha: ${{ steps.resolve.outputs.merge_sha }}
+      recovery: ${{ steps.resolve.outputs.recovery }}
+    steps:
+      - name: Resolve release target
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            case "$DISPATCH_TAG" in
+              v[0-9]*.[0-9]*.[0-9]*) : ;;
+              *) echo "::error::tag input '$DISPATCH_TAG' is not a strict vX.Y.Z tag" >&2; exit 1 ;;
+            esac
+            echo "$DISPATCH_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' ||
+              { echo "::error::tag input '$DISPATCH_TAG' is not a strict vX.Y.Z tag" >&2; exit 1; }
+            version="$DISPATCH_TAG"
+
+            object="$(gh api "repos/$REPO/git/ref/tags/$version")"
+            object_sha="$(printf '%s' "$object" | jq -r '.object.sha')"
+            object_type="$(printf '%s' "$object" | jq -r '.object.type')"
+            if [ "$object_type" = "tag" ]; then
+              merge_sha="$(gh api "repos/$REPO/git/tags/$object_sha" --jq '.object.sha')"
+            else
+              merge_sha="$object_sha"
+            fi
+            recovery=true
+          else
+            case "$PR_TITLE" in
+              "chore: release v"*) : ;;
+              *) echo "::error::release PR title does not match 'chore: release vX.Y.Z'" >&2; exit 1 ;;
+            esac
+            version="${PR_TITLE#chore: release }"
+            printf '%s' "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' ||
+              { echo "::error::parsed version '$version' from PR title is not a strict vX.Y.Z tag" >&2; exit 1; }
+            merge_sha="$PR_MERGE_SHA"
+            recovery=false
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=$merge_sha" >> "$GITHUB_OUTPUT"
+          echo "recovery=$recovery" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ steps.resolve.outputs.merge_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Assert commit reachable from origin/main
+        env:
+          MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
+        run: |
+          set -eu
+          # Fetch into FETCH_HEAD explicitly rather than relying on
+          # origin/main existing as a remote-tracking ref: actions/checkout
+          # doesn't guarantee that ref is populated when it was invoked
+          # against a raw SHA rather than a branch name.
+          git fetch origin main
+          git merge-base --is-ancestor "$MERGE_SHA" FETCH_HEAD ||
+            { echo "::error::$MERGE_SHA is not reachable from origin/main" >&2; exit 1; }
+
+      - name: Assert tag state (recovery may pre-exist, fresh must not)
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
+          RECOVERY: ${{ steps.resolve.outputs.recovery }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          if gh api "repos/$REPO/git/ref/tags/$VERSION" >/tmp/tag-ref.json 2>/dev/null; then
+            if [ "$RECOVERY" != "true" ]; then
+              echo "::error::tag $VERSION already exists but this is not a recovery run" >&2
+              exit 1
+            fi
+            object_sha="$(jq -r '.object.sha' /tmp/tag-ref.json)"
+            object_type="$(jq -r '.object.type' /tmp/tag-ref.json)"
+            if [ "$object_type" = "tag" ]; then
+              existing_sha="$(gh api "repos/$REPO/git/tags/$object_sha" --jq '.object.sha')"
+            else
+              existing_sha="$object_sha"
+            fi
+            [ "$existing_sha" = "$MERGE_SHA" ] ||
+              { echo "::error::tag $VERSION exists but points at $existing_sha, expected $MERGE_SHA" >&2; exit 1; }
+          elif [ "$RECOVERY" = "true" ]; then
+            echo "::error::recovery requested for $VERSION but the tag does not exist" >&2
+            exit 1
+          fi
+          # Whether the GitHub *release* for this tag already exists (as
+          # opposed to the tag itself) is intentionally NOT checked here:
+          # draft releases are only visible to a token with push access
+          # (contents: write), which this read-only job does not have. That
+          # check runs in `publish`, right before goreleaser, with the
+          # correctly-scoped token — see the step there for the reasoning.
+
+      - name: Assert changelog heading and batched fragment file
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -eu
+          version_no_prefix="${VERSION#v}"
+          grep -qF "## [$version_no_prefix]" CHANGELOG.md ||
+            { echo "::error::CHANGELOG.md has no '## [$version_no_prefix]' heading at this commit" >&2; exit 1; }
+          # changie names its batched fragment file after the v-prefixed
+          # version passed to `batch` (e.g. `.changes/v0.1.0.md`), not the
+          # un-prefixed heading it renders inside CHANGELOG.md -- verified
+          # against changie v1.25.2 directly. Do not "fix" this to match the
+          # CHANGELOG.md heading assert above; that one is correctly
+          # un-prefixed (it matches versionFormat's VersionNoPrefix).
+          [ -f ".changes/${VERSION}.md" ] ||
+            { echo "::error::.changes/${VERSION}.md (changie's batched output) is missing at this commit" >&2; exit 1; }
+
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Assert no unbatched fragments remain
+        run: |
+          set -eu
+          go run ./cmd/releasectl validate-fragments --dir .changes/unreleased
+          # Count fragments directly rather than parsing releasectl's
+          # stdout message (fragile: any output-format drift would leave
+          # `count` empty and produce a confusing error instead of the real
+          # one) — releasectl already proved above that every fragment
+          # present is well-formed; this just asserts there are none left.
+          remaining="$(find .changes/unreleased -maxdepth 1 -name '*.yaml' | wc -l | tr -d ' ')"
+          [ "$remaining" = "0" ] ||
+            { echo "::error::$remaining unbatched fragment(s) remain in .changes/unreleased at the release commit" >&2; exit 1; }
+
+      - name: Changelog template/config drift check
+        run: make changelog-check
+
+  check:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ needs.verify.outputs.merge_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make check
+
+  e2e:
+    needs: [verify, check]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/e2e.yml
+    with:
+      ref: ${{ needs.verify.outputs.merge_sha }}
+    secrets: inherit
+
+  tag:
+    needs: [verify, e2e]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ needs.verify.outputs.merge_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Create annotated tag (or verify the existing one)
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          MERGE_SHA: ${{ needs.verify.outputs.merge_sha }}
+          RECOVERY: ${{ needs.verify.outputs.recovery }}
+        run: |
+          set -eu
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            # verify already confirmed (in recovery mode only) that this tag
+            # points at MERGE_SHA. Never move or delete an existing tag.
+            [ "$RECOVERY" = "true" ] ||
+              { echo "::error::tag $VERSION unexpectedly exists at the tag step" >&2; exit 1; }
+            echo "tag $VERSION already exists at the expected commit; not recreating it"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$VERSION" -m "Release $VERSION" "$MERGE_SHA"
+            git push origin "refs/tags/$VERSION"
+          fi
+
+  publish:
+    needs: [verify, tag]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.version }}
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Draft releases are only visible to a token with push access, which
+      # this job has (contents: write) and `verify` deliberately did not.
+      # A published (non-draft) release for this tag means a previous run
+      # already completed publish — refuse to run goreleaser again rather
+      # than risk duplicating or corrupting a live release. An existing
+      # *draft* is the expected recovery-mode case: goreleaser reuses it.
+      - name: Refuse to double-publish
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if is_draft="$(gh release view "$VERSION" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$is_draft" = "false" ]; then
+              echo "::error::release $VERSION is already published; refusing to run goreleaser again" >&2
+              exit 1
+            fi
+            echo "existing draft release found for $VERSION (recovery run); goreleaser will reuse it"
+          fi
+
+      - name: Run goreleaser
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run github.com/goreleaser/goreleaser/v2@v2.17.1 release --clean
+
+      - name: Verify checksums manifest
+        run: |
+          set -eu
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c checksums.txt
+          else
+            shasum -a 256 -c checksums.txt
+          fi
+
+      # dist/artifacts.json is the stable contract (Task 3): per-target
+      # dist/ subdirectory names are not. Attest only the archives, not the
+      # SBOMs/checksums file/binaries, per the brief.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "dist/steampipe-plugin-youtrack_*.tar.gz"
+
+      - name: Verify uploaded release assets
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          expected="$(jq -r '[.[] | select(.type == "Archive" or .type == "Checksum" or .type == "SBOM") | .name] | sort | .[]' dist/artifacts.json)"
+          actual="$(gh release view "$VERSION" --json assets --jq '[.assets[].name] | sort | .[]')"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::uploaded release assets do not match dist/artifacts.json" >&2
+            echo "expected:" >&2; printf '%s\n' "$expected" >&2
+            echo "actual:" >&2; printf '%s\n' "$actual" >&2
+            exit 1
+          fi
+
+      - name: Publish release
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$VERSION" --draft=false
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          MERGE_SHA: ${{ needs.verify.outputs.merge_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          {
+            echo "## Release $VERSION published"
+            echo
+            echo "- Tag: \`$VERSION\`"
+            echo "- Commit: \`$MERGE_SHA\`"
+            echo "- Release: $(gh release view "$VERSION" --json url --jq .url)"
+            echo
+            echo "### Artifact digests"
+            echo '```'
+            cat dist/checksums.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

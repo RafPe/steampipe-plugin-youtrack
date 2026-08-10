@@ -25,7 +25,7 @@ func TestValidateConfig(t *testing.T) {
 		token   string
 		wantErr string
 	}{
-		"hosted instance":        {baseURL: "https://example.youtrack.cloud", token: "perm:token"},
+		"hosted instance":        {baseURL: "https://example.youtrack.cloud", token: "test-token"},
 		"subpath instance":       {baseURL: "https://example.com/youtrack", token: "token"},
 		"localhost HTTP":         {baseURL: "http://localhost:8080/youtrack", token: "token"},
 		"loopback IPv4 HTTP":     {baseURL: "http://127.0.0.1:8080", token: "token"},

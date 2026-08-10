@@ -1,2 +1,5 @@
 # Generated E2E credentials, plugin binaries, and isolated Steampipe home.
 /tests/e2e/.state/
+
+# GoReleaser build/snapshot output (archives, checksums, SBOMs).
+/dist/

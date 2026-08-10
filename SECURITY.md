@@ -35,3 +35,17 @@ have been exposed. The plugin must never log or return the token.
 Reports about upstream vulnerabilities in Steampipe, Go, or YouTrack should be
 sent to the corresponding upstream project unless this plugin makes the issue
 independently exploitable.
+
+## Supply chain
+
+Every third-party GitHub Action used in CI and release workflows is pinned
+to a full 40-character commit SHA (with the release tag kept only as a
+comment), not a mutable tag or branch. Release tool versions (Changie,
+GoReleaser, syft) are pinned the same way, invoked through `go run` so
+nothing is preinstalled or trusted implicitly.
+
+Each release publishes, alongside the plugin archives: a SHA-256
+`checksums.txt`, a per-archive SPDX SBOM, and a GitHub build-provenance
+attestation covering the archives. See [Verifying release
+artifacts](docs/releases.md#verifying-release-artifacts) for the exact
+`sha256sum`, `gh attestation verify`, and SBOM-inspection commands.

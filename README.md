@@ -55,6 +55,15 @@ aggregations, identifier lookups, and multi-table joins.
 
 Use `make test`, `make test-race`, `make test-contract`, `make test-integration`, `make coverage`, `make lint`, `make build`, or the complete local CI equivalent `make check`. The integration suite crosses the SDK hydration and real HTTP transport boundaries; the coverage gate requires 100% statement coverage in first-party testable packages. See [E2E testing](docs/e2e.md) for the pinned real YouTrack and Steampipe flow.
 
+## Releases
+
+Releases are cut from a label on each pull request (`release/major`,
+`release/minor`, `release/patch`, or `release/skip`) and a Changie changelog
+fragment; a generated pull request batches them into a version, and merging
+it triggers tagging, artifact builds, and publication. See
+[docs/releases.md](docs/releases.md) for the full contributor and maintainer
+guide, including recovery procedures and artifact verification.
+
 ## Compatibility
 
 The matrix distinguishes versions exercised by this repository from versions
