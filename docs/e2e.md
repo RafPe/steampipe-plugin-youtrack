@@ -29,8 +29,9 @@ and [permanent-token procedure](https://www.jetbrains.com/help/youtrack/server/m
    display it again.
 
 The named YouTrack volumes preserve this setup between test runs. The token is
-never committed or duplicated into a standalone file. The generated Steampipe
-connection file is mode `0600` and is removed when the test exits.
+never committed or written into generated configuration: the mode `0600`
+Steampipe connection file refers to `YOUTRACK_TOKEN` through `env()` and is
+removed when the test exits.
 
 ## Run
 

@@ -343,7 +343,7 @@ func TestGetRetryWaitHonorsContext(t *testing.T) {
 		http.Error(w, "slow down", http.StatusTooManyRequests)
 	}))
 	t.Cleanup(server.Close)
-	c, err := New(server.URL, "token", WithRetry(2, time.Hour))
+	c, err := New(server.URL, "token", WithRetry(2, defaultMaxRetryDelay))
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

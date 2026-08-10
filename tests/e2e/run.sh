@@ -28,17 +28,17 @@ api() {
   path=$2
   data=${3:-}
   if [ -n "$data" ]; then
-    authorization_config | curl --config - --fail --silent --show-error -X "$method" \
+    authorization_header | curl --header @- --fail --silent --show-error -X "$method" \
       -H 'Accept: application/json' -H 'Content-Type: application/json' \
       --data "$data" "$base_url$path"
   else
-    authorization_config | curl --config - --fail --silent --show-error -X "$method" \
+    authorization_header | curl --header @- --fail --silent --show-error -X "$method" \
       -H 'Accept: application/json' "$base_url$path"
   fi
 }
 
-authorization_config() {
-  printf 'header = "Authorization: Bearer %s"\n' "$YOUTRACK_TOKEN"
+authorization_header() {
+	printf 'Authorization: Bearer %s\n' "$YOUTRACK_TOKEN"
 }
 
 sql_json() {
@@ -57,6 +57,9 @@ for command_name in docker curl jq go; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
 [ -n "${YOUTRACK_TOKEN:-}" ] || fail "YOUTRACK_TOKEN is required; see docs/e2e.md"
+if printf '%s' "$YOUTRACK_TOKEN" | LC_ALL=C grep '[[:cntrl:]]' >/dev/null; then
+  fail "YOUTRACK_TOKEN contains unsupported control characters"
+fi
 
 install_steampipe() {
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -122,13 +125,13 @@ cat >"$config_dir/youtrack.spc" <<EOF
 connection "youtrack" {
   plugin   = "local/youtrack"
   base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
-  token    = "${YOUTRACK_TOKEN}"
+  token    = env("YOUTRACK_TOKEN")
 }
 
 connection "youtrack_secondary" {
   plugin   = "local/youtrack"
   base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
-  token    = "${YOUTRACK_TOKEN}"
+  token    = env("YOUTRACK_TOKEN")
 }
 
 connection "youtrack_invalid" {
@@ -283,7 +286,7 @@ api DELETE "/api/agiles/$agile_id" >/dev/null; agile_id=
 api DELETE "/api/savedQueries/$saved_query_id" >/dev/null; saved_query_id=
 api DELETE "/api/tags/$tag_id" >/dev/null; tag_id=
 api DELETE "/api/admin/projects/$project_id" >/dev/null
-status=$(authorization_config | curl --config - --silent --output /dev/null \
+status=$(authorization_header | curl --header @- --silent --output /dev/null \
   --write-out '%{http_code}' "$base_url/api/admin/projects/$project_id")
 [ "$status" = 404 ] || fail "seeded project still exists after cleanup (HTTP $status)"
 project_id=

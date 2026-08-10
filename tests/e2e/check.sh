@@ -13,6 +13,8 @@ grep -F 'steampipe_version=2.3.2' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'checksums.txt' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'sha256' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'chmod 600' "$repo_dir/tests/e2e/run.sh" >/dev/null
+grep -F 'token    = env("YOUTRACK_TOKEN")' "$repo_dir/tests/e2e/run.sh" >/dev/null
+grep -F 'curl --header @-' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'base_url = "http://127.0.0.1:' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F '/api/admin/timeTrackingSettings/workItemTypes' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F '/timeTrackingSettings?fields=' "$repo_dir/tests/e2e/run.sh" >/dev/null

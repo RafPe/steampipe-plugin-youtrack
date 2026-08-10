@@ -134,8 +134,8 @@ func WithRetry(maxAttempts int, delay time.Duration) Option {
 		if maxAttempts <= 0 {
 			return errors.New("maximum attempts must be positive")
 		}
-		if delay < 0 {
-			return errors.New("retry delay must not be negative")
+		if delay < 0 || delay > defaultMaxRetryDelay {
+			return fmt.Errorf("retry delay must be between 0 and %s", defaultMaxRetryDelay)
 		}
 		c.maxAttempts = maxAttempts
 		c.retryDelay = delay
@@ -328,7 +328,7 @@ func (c *Client) get(ctx context.Context, requestURL string) ([]byte, error) {
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if len(body) != 0 {
-				contentType := resp.Header.Get("Content-Type")
+				contentType := redactSecret(resp.Header.Get("Content-Type"), c.token)
 				mediaType, _, parseErr := mime.ParseMediaType(contentType)
 				if parseErr != nil || (mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json")) {
 					return nil, &InvalidResponseError{ContentType: contentType, Cause: parseErr}

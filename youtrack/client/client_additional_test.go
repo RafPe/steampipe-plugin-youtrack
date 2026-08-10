@@ -52,6 +52,7 @@ func TestNewRejectsInvalidInputsAndOptions(t *testing.T) {
 		{name: "zero body", base: "https://example.test", token: "token", options: []Option{WithMaxBodyBytes(0)}},
 		{name: "zero attempts", base: "https://example.test", token: "token", options: []Option{WithRetry(0, 0)}},
 		{name: "negative delay", base: "https://example.test", token: "token", options: []Option{WithRetry(1, -1)}},
+		{name: "oversized delay", base: "https://example.test", token: "token", options: []Option{WithRetry(1, defaultMaxRetryDelay+time.Nanosecond)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,6 +60,32 @@ func TestNewRejectsInvalidInputsAndOptions(t *testing.T) {
 				t.Fatal("New() error = nil, want error")
 			}
 		})
+	}
+}
+
+func TestInvalidResponseDoesNotExposeToken(t *testing.T) {
+	t.Parallel()
+
+	token := strings.Join([]string{"invalid", "response", "value"}, "-")
+	client := &Client{
+		token: token,
+		httpClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/" + token}},
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+			}, nil
+		})},
+		maxAttempts: 1, maxBodyBytes: 1024,
+	}
+
+	_, err := client.get(context.Background(), "https://example.test")
+	var invalid *InvalidResponseError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("Client.get(reflected token content type) error = %v, want InvalidResponseError", err)
+	}
+	if strings.Contains(err.Error(), token) || strings.Contains(invalid.ContentType, token) {
+		t.Errorf("Client.get(reflected token content type) error = %#v, must not expose token", invalid)
 	}
 }
 
