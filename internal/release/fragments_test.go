@@ -24,6 +24,16 @@ func TestFragmentCandidates(t *testing.T) {
 			files: []string{"testdata/fragments/bad/isdir.yaml/.gitkeep"},
 			want:  nil,
 		},
+		"ignores the production .gitkeep path": {
+			dir:   ".changes/unreleased",
+			files: []string{".changes/unreleased/.gitkeep"},
+			want:  nil,
+		},
+		"a path not raw-prefixed but resolving inside the dir is still a candidate": {
+			dir:   "testdata/fragments/valid",
+			files: []string{"testdata/fragments/bad/../valid/Added-1.yaml"},
+			want:  []string{"testdata/fragments/valid/Added-1.yaml"},
+		},
 		"ignores files outside the dir": {
 			dir:   "testdata/fragments/valid",
 			files: []string{"testdata/fragments/outside/secret.yaml"},

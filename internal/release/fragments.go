@@ -44,7 +44,11 @@ type fragment struct {
 // fragmentCandidates scans changedFiles for entries that reference a
 // changelog fragment under fragmentsDir, and rejects path-safety violations
 // (absolute paths anywhere in changedFiles, or ".." traversal that escapes
-// fragmentsDir). Returned paths are cleaned, repo-relative, and directly
+// fragmentsDir). An entry counts as a candidate if it resolves inside
+// fragmentsDir once cleaned (regardless of how it's written) or if its raw,
+// uncleaned form is textually aimed at fragmentsDir (so a disguised ".."
+// escape is reported as an error rather than silently treated as an
+// unrelated file). Returned paths are cleaned, repo-relative, and directly
 // usable to open the file. Only ".yaml" files are treated as fragments;
 // non-YAML entries under fragmentsDir (e.g. ".gitkeep") are ignored.
 func fragmentCandidates(fragmentsDir string, changedFiles []string) ([]string, error) {
@@ -62,11 +66,20 @@ func fragmentCandidates(fragmentsDir string, changedFiles []string) ([]string, e
 		if filepath.IsAbs(f) {
 			return nil, fmt.Errorf("changed_files entries must be repo-relative paths, got %q", f)
 		}
-		if !strings.HasPrefix(f, prefix) {
+		// Candidacy is decided two ways, deliberately not just one: the
+		// cleaned form tells us where the path actually resolves, but a
+		// raw path that merely *looks* aimed at the fragments dir (before
+		// cleaning) must still be routed into the escape check below
+		// rather than silently skipped as "unrelated" -- otherwise a
+		// disguised ".." traversal would just be ignored instead of
+		// rejected.
+		cleaned := filepath.Clean(f)
+		cleanContained := cleaned == cleanDir || strings.HasPrefix(cleaned, prefix)
+		rawLooksTargeted := strings.HasPrefix(f, prefix)
+		if !cleanContained && !rawLooksTargeted {
 			continue // not under the fragments dir; irrelevant to fragment validation
 		}
-		cleaned := filepath.Clean(f)
-		if cleaned != cleanDir && !strings.HasPrefix(cleaned, prefix) {
+		if !cleanContained {
 			return nil, fmt.Errorf("fragment path %q escapes the fragments directory", f)
 		}
 		if filepath.Ext(cleaned) != ".yaml" {
