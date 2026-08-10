@@ -7,7 +7,8 @@ docker compose --project-directory "$repo_dir" -f "$repo_dir/docker-compose.yml"
 sh -n "$repo_dir/tests/e2e/run.sh"
 sh -n "$repo_dir/tests/e2e/cleanup.sh"
 
-grep -F 'jetbrains/youtrack:2026.1.13874' "$repo_dir/docker-compose.yml" >/dev/null
+grep -E 'jetbrains/youtrack:2026\.1\.13874@sha256:[0-9a-f]{64}' "$repo_dir/docker-compose.yml" >/dev/null
+grep -F '127.0.0.1:${YOUTRACK_PORT:-18080}:8080' "$repo_dir/docker-compose.yml" >/dev/null
 grep -F 'steampipe_version=2.3.2' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'checksums.txt' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'sha256' "$repo_dir/tests/e2e/run.sh" >/dev/null
@@ -21,6 +22,10 @@ if grep -F 'work-item creation rejected' "$repo_dir/tests/e2e/run.sh" >/dev/null
 fi
 if grep -F 'token_file=' "$repo_dir/tests/e2e/run.sh" >/dev/null; then
   printf '%s\n' "e2e: token must not be duplicated into a standalone file" >&2
+  exit 1
+fi
+if grep -F -- '-H "Authorization: Bearer $YOUTRACK_TOKEN"' "$repo_dir/tests/e2e/run.sh" >/dev/null; then
+  printf '%s\n' "e2e: token must not appear in curl process arguments" >&2
   exit 1
 fi
 if grep -E 'image: .+:(latest|main|master)$' "$repo_dir/docker-compose.yml" >/dev/null; then

@@ -48,6 +48,7 @@ func TestNewRejectsInvalidInputsAndOptions(t *testing.T) {
 		{name: "nil option", base: "https://example.test", token: "token", options: []Option{nil}},
 		{name: "nil HTTP client", base: "https://example.test", token: "token", options: []Option{WithHTTPClient(nil)}},
 		{name: "zero page", base: "https://example.test", token: "token", options: []Option{WithPageSize(0)}},
+		{name: "oversized page", base: "https://example.test", token: "token", options: []Option{WithPageSize(43)}},
 		{name: "zero body", base: "https://example.test", token: "token", options: []Option{WithMaxBodyBytes(0)}},
 		{name: "zero attempts", base: "https://example.test", token: "token", options: []Option{WithRetry(0, 0)}},
 		{name: "negative delay", base: "https://example.test", token: "token", options: []Option{WithRetry(1, -1)}},
@@ -61,13 +62,26 @@ func TestNewRejectsInvalidInputsAndOptions(t *testing.T) {
 	}
 }
 
+func TestNewDoesNotExposeInvalidBaseURL(t *testing.T) {
+	t.Parallel()
+
+	secret := strings.Join([]string{"client", "url", "value"}, "-")
+	_, err := New("https://user:"+secret+"%zz@example.test", "token")
+	if err == nil {
+		t.Fatal("New(invalid credential URL, token) error = nil, want error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Errorf("New(invalid credential URL, token) error = %q, must not contain URL credentials", err)
+	}
+}
+
 func TestOptionsApplyAndHTTPErrorString(t *testing.T) {
 	httpClient := &http.Client{}
 	c, err := New("https://example.test", "token", WithHTTPClient(httpClient), WithPageSize(7), WithMaxBodyBytes(8), WithRetry(2, 3*time.Millisecond))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.httpClient != httpClient || c.pageSize != 7 || c.maxBodyBytes != 8 || c.maxAttempts != 2 || c.retryDelay != 3*time.Millisecond {
+	if c.httpClient == httpClient || c.httpClient.Transport != httpClient.Transport || c.pageSize != 7 || c.maxBodyBytes != 8 || c.maxAttempts != 2 || c.retryDelay != 3*time.Millisecond {
 		t.Fatalf("options not applied: %#v", c)
 	}
 	errText := (&HTTPError{StatusCode: 403, Kind: ErrorAuthorization}).Error()
@@ -238,6 +252,8 @@ func TestRetryAfterAndWait(t *testing.T) {
 		{"", -1}, {"2", 2 * time.Second}, {"-2", -1}, {"invalid", -1},
 		{now.Add(3 * time.Second).Format(http.TimeFormat), 3 * time.Second},
 		{now.Add(-time.Second).Format(http.TimeFormat), 0},
+		{"3600", defaultMaxRetryDelay},
+		{now.Add(time.Hour).Format(http.TimeFormat), defaultMaxRetryDelay},
 	}
 	for _, tt := range tests {
 		if got := parseRetryAfter(tt.value, now); got != tt.want {
@@ -251,6 +267,39 @@ func TestRetryAfterAndWait(t *testing.T) {
 	cancel()
 	if err := wait(ctx, time.Hour); !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait(canceled) = %v", err)
+	}
+}
+
+func TestListContinuesWhenServerCapsPageBelowRequestedTop(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("$skip") {
+		case "0":
+			requests.Add(1)
+			_, _ = io.WriteString(w, `[1]`)
+		case "1":
+			requests.Add(1)
+			_, _ = io.WriteString(w, `[2]`)
+		case "2":
+			requests.Add(1)
+			_, _ = io.WriteString(w, `[]`)
+		default:
+			t.Errorf("List() $skip = %q, want 0, 1, or 2", r.URL.Query().Get("$skip"))
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := New(server.URL, "token", WithPageSize(2))
+	if err != nil {
+		t.Fatalf("New(server, token) error = %v, want nil", err)
+	}
+	var got []int
+	if err := c.List(context.Background(), nil, nil, nil, 0, &got); err != nil {
+		t.Fatalf("List(server-capped pages) error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(got, []int{1, 2}) || requests.Load() != 3 {
+		t.Errorf("List(server-capped pages) = %v with %d requests, want [1 2] with 3 requests", got, requests.Load())
 	}
 }
 

@@ -100,6 +100,118 @@ func TestTokenDoesNotLeakIntoErrors(t *testing.T) {
 	}
 }
 
+func TestTokenIsRedactedFromHTTPErrorBody(t *testing.T) {
+	t.Parallel()
+
+	const token = "reflected-permanent-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "Authorization: Bearer "+token, http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(server.URL, token)
+	if err != nil {
+		t.Fatalf("New(%q, token) error = %v, want nil", server.URL, err)
+	}
+	err = c.Get(context.Background(), nil, nil, nil, &map[string]any{})
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("Get(reflected token) error = %T, want *HTTPError", err)
+	}
+	if strings.Contains(httpErr.Body, token) || !strings.Contains(httpErr.Body, "[REDACTED]") {
+		t.Errorf("HTTPError.Body token redacted = false, body = %q", httpErr.Body)
+	}
+}
+
+func TestClientRejectsCrossOriginRedirectWithoutForwardingToken(t *testing.T) {
+	t.Parallel()
+
+	const token = "redirect-secret"
+	var targetAuthorization string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetAuthorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(target.Close)
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(source.Close)
+
+	c, err := New(source.URL, token)
+	if err != nil {
+		t.Fatalf("New(%q, token) error = %v, want nil", source.URL, err)
+	}
+	err = c.Get(context.Background(), nil, nil, nil, &map[string]any{})
+	if !errors.Is(err, errUnsafeRedirect) {
+		t.Errorf("Get(cross-origin redirect) error = %v, want errUnsafeRedirect", err)
+	}
+	if targetAuthorization != "" {
+		t.Errorf("cross-origin target Authorization = %q, want empty", targetAuthorization)
+	}
+}
+
+func TestClientAllowsSameOriginRedirect(t *testing.T) {
+	t.Parallel()
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/final" {
+			http.Redirect(w, r, server.URL+"/final", http.StatusFound)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token" {
+			t.Errorf("same-origin redirect Authorization = %q, want bearer token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(server.Close)
+
+	c, err := New(server.URL, "token")
+	if err != nil {
+		t.Fatalf("New(%q, token) error = %v, want nil", server.URL, err)
+	}
+	if err := c.Get(context.Background(), nil, nil, nil, &map[string]any{}); err != nil {
+		t.Errorf("Get(same-origin redirect) error = %v, want nil", err)
+	}
+}
+
+func TestClientPreservesCustomRedirectPolicy(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("custom redirect rejected")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/final", http.StatusFound)
+	}))
+	t.Cleanup(server.Close)
+	httpClient := server.Client()
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return wantErr }
+	c, err := New(server.URL, "token", WithHTTPClient(httpClient))
+	if err != nil {
+		t.Fatalf("New(%q, token, custom redirect client) error = %v, want nil", server.URL, err)
+	}
+	if err := c.Get(context.Background(), nil, nil, nil, nil); !errors.Is(err, wantErr) {
+		t.Errorf("Get(custom redirect policy) error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestClientLimitsSameOriginRedirects(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/loop", http.StatusFound)
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(server.URL, "token")
+	if err != nil {
+		t.Fatalf("New(%q, token) error = %v, want nil", server.URL, err)
+	}
+	if err := c.Get(context.Background(), nil, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "stopped after 10 redirects") {
+		t.Errorf("Get(redirect loop) error = %v, want redirect limit error", err)
+	}
+}
+
 func TestListPaginatesAndHonorsLimit(t *testing.T) {
 	t.Parallel()
 

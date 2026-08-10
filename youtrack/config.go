@@ -2,7 +2,6 @@ package youtrack
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -34,7 +33,7 @@ func ValidateConfig(config *Config) error {
 	baseURL := strings.TrimSpace(*config.BaseURL)
 	parsed, err := url.Parse(baseURL)
 	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" {
-		return fmt.Errorf("base_url must be a valid absolute URL: %q", baseURL)
+		return errors.New("base_url must be a valid absolute URL")
 	}
 	if parsed.User != nil {
 		return errors.New("base_url must not contain credentials")

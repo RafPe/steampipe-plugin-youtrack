@@ -9,7 +9,7 @@ Returns knowledge-base articles visible to the permanent-token user. Nested proj
 | `id` | text | Normally non-null. | Article database ID. |
 | `raw` | jsonb | Normally non-null. | Complete requested YouTrack representation. |
 | `id_readable` | text | Empty if omitted by YouTrack. | Human-readable article ID, such as `NP-A-1`. |
-| `summary` | text | Empty when null or omitted by YouTrack. | Article summary. |
+| `summary` | text | Null when null or omitted by YouTrack. | Article summary. |
 | `content` | text | Null when unset. | Article content. |
 | `project` | jsonb | Null when unavailable. | Parent project object. |
 | `reporter` | jsonb | Null when unset or not visible. | Article reporter object. |

@@ -23,7 +23,7 @@ type resource struct {
 	Login                 string          `json:"login"`
 	FullName              string          `json:"fullName"`
 	Email                 *string         `json:"email"`
-	Summary               string          `json:"summary"`
+	Summary               *string         `json:"summary"`
 	Description           *string         `json:"description"`
 	Text                  *string         `json:"text"`
 	Content               *string         `json:"content"`

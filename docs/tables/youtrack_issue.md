@@ -9,7 +9,7 @@ Returns issues visible to the permanent-token user. Nested and polymorphic value
 | `id` | text | Normally non-null. | YouTrack database ID. |
 | `raw` | jsonb | Normally non-null. | Complete requested YouTrack representation. |
 | `id_readable` | text | Empty if omitted by YouTrack. | Human-readable issue ID, such as `DEMO-7`. |
-| `summary` | text | Empty if omitted by YouTrack. | Issue summary. |
+| `summary` | text | Null when omitted by YouTrack. | Issue summary. |
 | `description` | text | Null when unset. | Issue description. |
 | `project` | jsonb | Null when not visible. | Project object containing its ID, name, and short name. |
 | `project_id` | text | Empty when the project object is unavailable. | Database ID derived from `project`; exact equality selects the project-scoped endpoint. |

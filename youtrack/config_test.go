@@ -56,6 +56,20 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
+func TestValidateConfigDoesNotExposeInvalidBaseURL(t *testing.T) {
+	t.Parallel()
+
+	privateValue := strings.Join([]string{"configuration", "private", "value"}, "-")
+	baseURL, token := "https://user:"+privateValue+"%zz@example.test", "token"
+	err := ValidateConfig(&Config{BaseURL: &baseURL, Token: &token})
+	if err == nil {
+		t.Fatal("ValidateConfig(invalid credential URL) error = nil, want error")
+	}
+	if strings.Contains(err.Error(), privateValue) {
+		t.Errorf("ValidateConfig(invalid credential URL) error = %q, must not contain URL credentials", err)
+	}
+}
+
 func TestValidateConfigNil(t *testing.T) {
 	t.Parallel()
 

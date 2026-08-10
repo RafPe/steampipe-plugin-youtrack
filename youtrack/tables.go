@@ -8,7 +8,7 @@ import (
 
 func resourceDefinitions() []resourceDefinition {
 	return []resourceDefinition{
-		{name: "youtrack_project", description: "Projects visible to the connection user.", path: []string{"admin", "projects"}, fields: []string{"id,name,shortName,description,leader(id,login,fullName),created,updated"}, columns: projectColumns(), getKeys: []string{"id", "short_name"}},
+		{name: "youtrack_project", description: "Projects visible to the connection user.", path: []string{"admin", "projects"}, fields: []string{"id,name,shortName,description,leader(id,login,fullName)"}, columns: projectColumns(), getKeys: []string{"id", "short_name"}},
 		{name: "youtrack_issue", description: "Issues visible to the connection user.", path: []string{"issues"}, fields: []string{"id,idReadable,summary,description,project(id,name,shortName),reporter(id,login,fullName),updater(id,login,fullName),created,updated,resolved,isDraft,tags(id,name),customFields(id,name,$type,value(id,name,login,fullName,text,minutes,presentation)),commentsCount,votes"}, columns: issueColumns(), listKeys: plugin.OptionalColumns([]string{"query", "project_id"}), getKeys: []string{"id", "id_readable"}},
 		{name: "youtrack_user", description: "Users visible through the current YouTrack API.", path: []string{"users"}, fields: []string{"id,login,name,fullName,email,banned,online"}, columns: userColumns(), getKeys: []string{"id", "login"}},
 		{name: "youtrack_group", description: "User groups visible through the current YouTrack API.", path: []string{"groups"}, fields: []string{"id,name,description,users(id,login,fullName)"}, columns: groupColumns(), listKeys: plugin.OptionalColumns([]string{"query"})},
@@ -27,8 +27,6 @@ func projectColumns() []*plugin.Column {
 		{Name: "short_name", Type: proto.ColumnType_STRING, Description: "The project's short name."},
 		{Name: "description", Type: proto.ColumnType_STRING, Description: "The project description."},
 		{Name: "leader", Type: proto.ColumnType_JSON, Description: "The project leader."},
-		{Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the project was created.", Transform: transform.FromField("Created").Transform(milliseconds)},
-		{Name: "updated", Type: proto.ColumnType_TIMESTAMP, Description: "When the project was last updated.", Transform: transform.FromField("Updated").Transform(milliseconds)},
 	}
 }
 

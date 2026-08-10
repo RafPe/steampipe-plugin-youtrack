@@ -28,15 +28,17 @@ api() {
   path=$2
   data=${3:-}
   if [ -n "$data" ]; then
-    curl --fail --silent --show-error -X "$method" \
-      -H "Authorization: Bearer $YOUTRACK_TOKEN" \
+    authorization_config | curl --config - --fail --silent --show-error -X "$method" \
       -H 'Accept: application/json' -H 'Content-Type: application/json' \
       --data "$data" "$base_url$path"
   else
-    curl --fail --silent --show-error -X "$method" \
-      -H "Authorization: Bearer $YOUTRACK_TOKEN" \
+    authorization_config | curl --config - --fail --silent --show-error -X "$method" \
       -H 'Accept: application/json' "$base_url$path"
   fi
+}
+
+authorization_config() {
+  printf 'header = "Authorization: Bearer %s"\n' "$YOUTRACK_TOKEN"
 }
 
 sql_json() {
@@ -281,8 +283,8 @@ api DELETE "/api/agiles/$agile_id" >/dev/null; agile_id=
 api DELETE "/api/savedQueries/$saved_query_id" >/dev/null; saved_query_id=
 api DELETE "/api/tags/$tag_id" >/dev/null; tag_id=
 api DELETE "/api/admin/projects/$project_id" >/dev/null
-status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  -H "Authorization: Bearer $YOUTRACK_TOKEN" "$base_url/api/admin/projects/$project_id")
+status=$(authorization_config | curl --config - --silent --output /dev/null \
+  --write-out '%{http_code}' "$base_url/api/admin/projects/$project_id")
 [ "$status" = 404 ] || fail "seeded project still exists after cleanup (HTTP $status)"
 project_id=
 

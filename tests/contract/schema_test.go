@@ -17,7 +17,6 @@ func TestPublicSchema(t *testing.T) {
 			"id": proto.ColumnType_STRING, "raw": proto.ColumnType_JSON,
 			"name": proto.ColumnType_STRING, "short_name": proto.ColumnType_STRING,
 			"description": proto.ColumnType_STRING, "leader": proto.ColumnType_JSON,
-			"created": proto.ColumnType_TIMESTAMP, "updated": proto.ColumnType_TIMESTAMP,
 		},
 		"youtrack_issue": {
 			"id": proto.ColumnType_STRING, "raw": proto.ColumnType_JSON,

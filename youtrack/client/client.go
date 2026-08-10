@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	defaultPageSize     = 25
-	defaultMaxBodyBytes = 4 << 20
-	defaultMaxAttempts  = 3
-	defaultRetryDelay   = 100 * time.Millisecond
+	defaultPageSize      = 25
+	defaultMaxBodyBytes  = 4 << 20
+	defaultMaxAttempts   = 3
+	defaultRetryDelay    = 100 * time.Millisecond
+	defaultMaxRetryDelay = 30 * time.Second
+	maxPageSize          = 42
 )
 
 // ErrResponseTooLarge indicates that a response exceeded the configured body limit.
@@ -28,6 +30,8 @@ var ErrResponseTooLarge = errors.New("response body too large")
 // ErrInvalidResponse indicates that a successful response did not satisfy the
 // protocol expected by the client.
 var ErrInvalidResponse = errors.New("invalid YouTrack response")
+
+var errUnsafeRedirect = errors.New("unsafe YouTrack redirect")
 
 // ErrorKind classifies an HTTP response failure.
 type ErrorKind string
@@ -97,7 +101,7 @@ func WithHTTPClient(httpClient *http.Client) Option {
 		if httpClient == nil {
 			return errors.New("HTTP client must not be nil")
 		}
-		c.httpClient = httpClient
+		c.httpClient = secureHTTPClient(httpClient)
 		return nil
 	}
 }
@@ -105,8 +109,8 @@ func WithHTTPClient(httpClient *http.Client) Option {
 // WithPageSize sets the maximum number of items requested per list page.
 func WithPageSize(pageSize int) Option {
 	return func(c *Client) error {
-		if pageSize <= 0 {
-			return errors.New("page size must be positive")
+		if pageSize <= 0 || pageSize > maxPageSize {
+			return fmt.Errorf("page size must be between 1 and %d", maxPageSize)
 		}
 		c.pageSize = pageSize
 		return nil
@@ -164,7 +168,7 @@ func New(baseURL, token string, options ...Option) (*Client, error) {
 	c := &Client{
 		baseURL:      normalized,
 		token:        token,
-		httpClient:   http.DefaultClient,
+		httpClient:   secureHTTPClient(http.DefaultClient),
 		pageSize:     defaultPageSize,
 		maxBodyBytes: defaultMaxBodyBytes,
 		maxAttempts:  defaultMaxAttempts,
@@ -184,7 +188,7 @@ func New(baseURL, token string, options ...Option) (*Client, error) {
 func normalizeBaseURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return nil, fmt.Errorf("parse YouTrack base URL: %w", err)
+		return nil, errors.New("invalid YouTrack base URL")
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, errors.New("YouTrack base URL must use http or https")
@@ -206,6 +210,25 @@ func normalizeBaseURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
+func secureHTTPClient(source *http.Client) *http.Client {
+	clientCopy := *source
+	previous := clientCopy.CheckRedirect
+	clientCopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		origin := via[0].URL
+		if !strings.EqualFold(req.URL.Scheme, origin.Scheme) || !strings.EqualFold(req.URL.Host, origin.Host) {
+			return errUnsafeRedirect
+		}
+		if previous != nil {
+			return previous(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &clientCopy
+}
+
 // Get fetches and decodes one resource. Each path element is escaped as one
 // URL segment. Query and fields values are copied and may contain repeats.
 func (c *Client) Get(ctx context.Context, path []string, query url.Values, fields []string, dst any) error {
@@ -224,7 +247,7 @@ func (c *Client) Get(ctx context.Context, path []string, query url.Values, field
 }
 
 // List fetches pages into a pointer to a slice. A positive limit bounds the
-// total result count; zero retrieves pages until YouTrack returns a short page.
+// total result count; zero retrieves pages until YouTrack returns an empty page.
 func (c *Client) List(ctx context.Context, path []string, query url.Values, fields []string, limit int, dst any) error {
 	if limit < 0 {
 		return errors.New("list limit must not be negative")
@@ -249,7 +272,7 @@ func (c *Client) List(ctx context.Context, path []string, query url.Values, fiel
 		items := page.Elem()
 		result.Set(reflect.AppendSlice(result, items))
 		skip += items.Len()
-		if items.Len() < top {
+		if items.Len() == 0 {
 			break
 		}
 	}
@@ -313,7 +336,7 @@ func (c *Client) get(ctx context.Context, requestURL string) ([]byte, error) {
 			}
 			return body, nil
 		}
-		httpErr := newHTTPError(resp.StatusCode, string(body), resp.Header.Get("Retry-After"), time.Now())
+		httpErr := newHTTPError(resp.StatusCode, redactSecret(string(body), c.token), resp.Header.Get("Retry-After"), time.Now())
 		if attempt == c.maxAttempts || !isRetryable(resp.StatusCode) {
 			return nil, httpErr
 		}
@@ -382,7 +405,11 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 		return -1
 	}
 	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds >= 0 {
-		return time.Duration(seconds) * time.Second
+		delay := time.Duration(seconds) * time.Second
+		if delay > defaultMaxRetryDelay || delay < 0 {
+			return defaultMaxRetryDelay
+		}
+		return delay
 	}
 	when, err := http.ParseTime(value)
 	if err != nil {
@@ -392,7 +419,17 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 	if delay < 0 {
 		return 0
 	}
+	if delay > defaultMaxRetryDelay {
+		return defaultMaxRetryDelay
+	}
 	return delay
+}
+
+func redactSecret(value, secret string) string {
+	if secret == "" {
+		return value
+	}
+	return strings.ReplaceAll(value, secret, "[REDACTED]")
 }
 
 func wait(ctx context.Context, delay time.Duration) error {

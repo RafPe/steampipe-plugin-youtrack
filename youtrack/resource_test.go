@@ -19,13 +19,16 @@ import (
 func TestResourcePreservesRawJSON(t *testing.T) {
 	t.Parallel()
 
-	input := []byte(`{"id":"2-1","description":null,"customFields":[{"value":{"name":"Open"}}]}`)
+	input := []byte(`{"id":"2-1","summary":null,"description":null,"customFields":[{"value":{"name":"Open"}}]}`)
 	var got resource
 	if err := json.Unmarshal(input, &got); err != nil {
 		t.Fatalf("json.Unmarshal(resource) error = %v, want nil", err)
 	}
 	if got.ID != "2-1" || got.Description != nil {
 		t.Errorf("json.Unmarshal(resource) = %#v, want id 2-1 and nil description", got)
+	}
+	if got.Summary != nil {
+		t.Errorf("json.Unmarshal(resource).Summary = %v, want nil", got.Summary)
 	}
 	if string(got.Raw) != string(input) {
 		t.Errorf("resource.Raw = %s, want %s", got.Raw, input)
@@ -120,6 +123,25 @@ func TestIssueListPushesQueryAndLimit(t *testing.T) {
 	}
 	if got := gotQuery.Get("$top"); got != "1" {
 		t.Errorf("resourceList(issue) $top = %q, want 1", got)
+	}
+}
+
+func TestProjectListRequestsOnlySupportedFields(t *testing.T) {
+	t.Parallel()
+
+	const wantFields = "id,name,shortName,description,leader(id,login,fullName)"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query()["fields"]; len(got) != 1 || got[0] != wantFields {
+			t.Errorf("resourceList(project) fields = %v, want [%s]", got, wantFields)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(server.Close)
+
+	d := queryData(t, server.URL)
+	if _, err := resourceList(resourceDefinitions()[0])(context.Background(), d, nil); err != nil {
+		t.Fatalf("resourceList(project) error = %v, want nil", err)
 	}
 }
 

@@ -1,6 +1,6 @@
 # youtrack_project
 
-Returns projects visible to the permanent-token user. Timestamps are converted from YouTrack Unix milliseconds to PostgreSQL timestamps. Nested objects remain JSONB, and `raw` preserves the requested API representation.
+Returns projects visible to the permanent-token user. Nested objects remain JSONB, and `raw` preserves the requested API representation.
 
 ## Columns
 
@@ -12,8 +12,6 @@ Returns projects visible to the permanent-token user. Timestamps are converted f
 | `short_name` | text | Empty if omitted by YouTrack. | Project short name, such as `DEMO`. |
 | `description` | text | Null when unset or not visible. | Project description. |
 | `leader` | jsonb | Null when unset or not visible. | Project leader object. |
-| `created` | timestamp with time zone | Null when unavailable. | Project creation time. |
-| `updated` | timestamp with time zone | Null when unavailable. | Last project update time. |
 
 ## Querying
 
