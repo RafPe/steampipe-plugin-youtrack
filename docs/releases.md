@@ -179,38 +179,15 @@ stateDiagram-v2
 Recovery mode (the bottom path) only applies once a `vX.Y.Z` tag already
 exists -- see [Recovery runbook](#recovery-runbook) below.
 
-### E2E environment protection
+### E2E is self-contained
 
 Both `release.yml`'s `e2e` job (gating every release before the tag is
 created) and `e2e.yml`'s own weekly `schedule` trigger (`17 3 * * 1`, every
-Monday) run against the `e2e` GitHub Environment, which a maintainer must
-create with a `YOUTRACK_TOKEN` secret (see [E2E testing](e2e.md)) before
-either can succeed.
-
-That environment can optionally be given required-reviewer protection (an
-approval gate a human must click through before a job using that
-environment runs). There is a real trade-off either way:
-
-- **With required-reviewer protection**, every run that touches the `e2e`
-  environment -- including a release's pre-tag E2E run and the unattended
-  weekly schedule -- pauses for manual approval. Nobody is watching for the
-  weekly scheduled run, so it will simply sit unapproved until a maintainer
-  notices and clicks through it, defeating the point of running it
-  unattended.
-- **Without required-reviewer protection**, the weekly schedule runs
-  unattended as intended, but every use of the `YOUTRACK_TOKEN` credential
-  -- the post-merge E2E run that gates a release, and any maintainer's
-  manual `e2e.yml` dispatch -- also runs with no human in the loop. `e2e.yml`
-  has no `pull_request` trigger at all, so this is not a fork-PR exposure;
-  it's simply the absence of a manual checkpoint on the credential's only
-  legitimate uses.
-
-Recommendation: enable required-reviewer protection. The E2E job holds a
-real, if scoped, credential and gates whether a release proceeds to tagging
-and publication -- publication safety outweighs the weekly schedule's
-convenience. Accept that the weekly schedule will need a maintainer to
-notice and approve it, or drop the schedule trigger if that's not
-sustainable.
+Monday) provision their own throwaway YouTrack instance and mint their own
+permanent token at runtime (`tests/e2e/provision.sh`; see
+[E2E testing](e2e.md)). There is no stored credential and no GitHub
+Environment to configure -- nothing for a maintainer to set up before E2E
+can run, and no credential-protection trade-off to make.
 
 ### Running prepare-release
 
@@ -249,8 +226,6 @@ The generated pull request's body includes:
 - The batched changelog excerpt for this version.
 - A maintainer checklist:
   - [ ] Backward compatibility reviewed
-  - [ ] E2E credentials (the `e2e` environment's `YOUTRACK_TOKEN`) are
-    configured and current
   - [ ] Publication approved -- merging this pull request triggers
     `release.yml`, which tags and publishes
 
