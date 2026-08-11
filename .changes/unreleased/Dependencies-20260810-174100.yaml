@@ -1,3 +1,0 @@
-kind: Dependencies
-body: Upgrade klauspost/compress to 1.18.7 to resolve GO-2026-5841 in the transitive dependency graph.
-time: 2026-08-10T17:41:00+03:00
