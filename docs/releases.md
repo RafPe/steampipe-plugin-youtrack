@@ -187,7 +187,11 @@ Monday) provision their own throwaway YouTrack instance and mint their own
 permanent token at runtime (`tests/e2e/provision.sh`; see
 [E2E testing](e2e.md)). There is no stored credential and no GitHub
 Environment to configure -- nothing for a maintainer to set up before E2E
-can run, and no credential-protection trade-off to make.
+can run, and no credential-protection trade-off to make. The same
+self-contained job also runs on any pull request labeled `e2e` -- see
+[Running E2E on a pull request](e2e.md#running-e2e-on-a-pull-request) --
+which is safe even from a fork for the same reason: no stored credential
+for it to touch.
 
 ### Running prepare-release
 

@@ -49,8 +49,16 @@ assert_count() {
   label=$1
   query=$2
   minimum=${3:-1}
-  got=$(sql_json "$query" | jq -er '.rows[0].result')
-  [ "$got" -ge "$minimum" ] || fail "$label returned $got rows, want at least $minimum"
+  attempts=${4:-1}
+  attempt=1
+  while :; do
+    got=$(sql_json "$query" | jq -er '.rows[0].result')
+    [ "$got" -ge "$minimum" ] && break
+    [ "$attempt" -ge "$attempts" ] && break
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+  [ "$got" -ge "$minimum" ] || fail "$label returned $got rows after $attempt attempt(s), want at least $minimum"
 }
 
 for command_name in docker curl jq go; do
@@ -160,13 +168,6 @@ connection "youtrack_unavailable" {
 EOF
 chmod 600 "$config_dir/youtrack.spc"
 
-# The first query against a cold Steampipe install starts the local
-# service and loads the plugin schema asynchronously, so
-# information_schema can transiently report zero youtrack_* tables if the
-# real assertions below query it immediately. Force that warm-up here,
-# once, before it matters.
-sql_json 'select 1;' >/dev/null
-
 export E2E_UID=${E2E_UID:-$(id -u)}
 export E2E_GID=${E2E_GID:-$(id -g)}
 
@@ -263,9 +264,14 @@ api POST "/api/issues/$first_issue_id/timeTracking/workItems?fields=id,text,dura
   "$(jq -n --arg text "E2E work item $run_suffix" --arg type_id "$work_item_type_id" \
     '{text: $text, date: (now * 1000 | floor), duration: {minutes: 60}, type: {id: $type_id}}')" >/dev/null
 
-# Discover the plugin schema before table-specific checks.
+# Discover the plugin schema before table-specific checks. Steampipe
+# registers a plugin's foreign-table schema asynchronously the first time
+# anything actually queries it (a bare "select 1" does not trigger this:
+# confirmed by CI hitting exactly this race even several seconds and over
+# a hundred API calls after such a warm-up), so retry briefly instead of
+# asserting once.
 assert_count "schema discovery" \
-  "select count(*)::int as result from information_schema.tables where table_schema = 'youtrack' and table_name like 'youtrack_%';" 1
+  "select count(*)::int as result from information_schema.tables where table_schema = 'youtrack' and table_name like 'youtrack_%';" 1 30
 assert_count "project identifier filter" \
   "select count(*)::int as result from youtrack.youtrack_project where id = '$project_id';"
 assert_count "issue identifier filter/pushdown" \

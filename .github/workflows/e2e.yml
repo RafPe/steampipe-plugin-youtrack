@@ -16,24 +16,83 @@ on:
         default: ""
   schedule:
     - cron: "17 3 * * 1"
+  # Opt-in per pull request: apply the "e2e" label to run the full suite on
+  # every push while it's applied (see "labeled" below and the job-level
+  # `if:`); remove the label to stop. See docs/e2e.md.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
 
 jobs:
   e2e:
+    # CRITICAL gotcha, not just a style choice: inside a workflow invoked
+    # via workflow_call, github.event_name and github.event are INHERITED
+    # from the top-level event that triggered the CALLING workflow, not
+    # 'workflow_call' and not this workflow's own trigger (confirmed
+    # against https://github.com/orgs/community/discussions/174203). Since
+    # release.yml's primary trigger is `pull_request: types: [closed]`,
+    # release.yml calling this workflow via workflow_call would ALSO see
+    # github.event_name == 'pull_request' here, with github.event.pull_request
+    # being the *release* PR (never labeled "e2e") -- a naive
+    # `github.event_name != 'pull_request'` check would silently skip the
+    # release pipeline's E2E gate on every real release.
+    #
+    # Disambiguate using the workflow_call contract instead: `ref` is a
+    # REQUIRED workflow_call input, and release.yml always passes a real,
+    # non-empty merge SHA for it whenever this job actually runs (verify's
+    # own steps fail the pipeline earlier if it were ever empty). A GENUINE
+    # top-level pull_request trigger (opened/synchronize/reopened/labeled,
+    # below) never has an `inputs` context at all, so `inputs.ref` is empty
+    # there. So: `github.event_name == 'pull_request' && inputs.ref == ''`
+    # is true only for a real top-level pull_request trigger on THIS
+    # workflow, never for a workflow_call invocation (regardless of what
+    # inherited event_name it carries) and never for workflow_dispatch or
+    # schedule (wrong event_name). This same predicate is repeated in the
+    # concurrency block below; keep both in sync if it ever changes.
+    if: >-
+      !(github.event_name == 'pull_request' && inputs.ref == '') ||
+      contains(github.event.pull_request.labels.*.name, 'e2e')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # No environment, no secret: the job provisions its own throwaway
     # YouTrack instance and permanent token at runtime (tests/e2e/provision.sh)
-    # and never touches a stored credential. See docs/e2e.md.
+    # and never touches a stored credential. See docs/e2e.md. This also
+    # means a pull_request run from a fork gets nothing beyond the default,
+    # automatically read-only, secret-less GITHUB_TOKEN fork PRs already
+    # get from GitHub -- there is no credential here for a malicious fork
+    # PR to escalate to or exfiltrate.
     permissions:
       contents: read
+    # Genuine PR runs only: cancel a superseded run for the same PR (one
+    # push obsoletes the previous one). Same genuine-top-level-pull_request
+    # predicate as the job `if:` above (event_name alone is unreliable here
+    # because workflow_call inherits it from the caller) -- every other
+    # case, INCLUDING a workflow_call from release.yml's own
+    # pull_request-triggered path, gets a group keyed to its own run ID,
+    # which by construction can never match another run's group. This
+    # concurrency block can therefore never queue behind or cancel a
+    # workflow_call (release pipeline), schedule, or workflow_dispatch run.
+    concurrency:
+      group: ${{ (github.event_name == 'pull_request' && inputs.ref == '') && format('e2e-pr-{0}', github.event.pull_request.number) || format('e2e-{0}', github.run_id) }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' && inputs.ref == '' }}
     steps:
+      # Permanent, cheap diagnostic: makes the job-if:/concurrency
+      # discrimination above visible on every run, not just when it's
+      # wrong. If this workflow is ever called from a new place, checking
+      # this line first is the fastest way to confirm the genuine-PR
+      # predicate still evaluates the way this file's comments claim.
+      - name: Log trigger context (debug for the workflow_call event_name gotcha)
+        run: |
+          echo "event_name=${{ github.event_name }} inputs_ref=${{ inputs.ref }} pull_request_number=${{ github.event.pull_request.number }}"
       # inputs.ref resolves to whichever trigger fired (workflow_call's
-      # required input or workflow_dispatch's optional one); for `schedule`,
-      # which declares no inputs, this is empty and actions/checkout falls
-      # back to its own default ref resolution.
+      # required input or workflow_dispatch's optional one); for
+      # `schedule` and `pull_request`, neither of which declares `inputs`,
+      # this is empty and actions/checkout falls back to its own default
+      # ref resolution -- for pull_request that default is the PR's merge
+      # ref, exactly as a plain `pull_request` trigger with no explicit
+      # `ref:` would check out.
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: ${{ inputs.ref }}
