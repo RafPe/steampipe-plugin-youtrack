@@ -1,0 +1,96 @@
+# GoReleaser config for the YouTrack Steampipe plugin.
+#
+# Pinned to GoReleaser v2.17.1: run via
+#   go run github.com/goreleaser/goreleaser/v2@v2.17.1 <check|release ...>
+# so CI and local runs need nothing preinstalled. Bump the version in that
+# invocation together with this file (see scripts/release-snapshot-check.sh
+# and .github/workflows for the other call sites) and re-run
+# `goreleaser check` against the new version before merging a bump.
+#
+# Steampipe Hub contract (see docs/turbot reference at
+# https://github.com/turbot/steampipe-plugin-aws/blob/main/.goreleaser.yml,
+# adapted here for v2 — that file targets v1 and its `format: gz` field, its
+# bare-gzip archives, and its checksum file naming are all v1-only and not
+# copied as-is):
+#   - binary:  steampipe-plugin-youtrack.plugin
+#   - archive: steampipe-plugin-youtrack_{os}_{arch}.tar.gz, containing only
+#     the plugin binary (a real tar.gz, not a bare gzip stream, so tooling
+#     that expects to `tar -x` the download works).
+version: 2
+
+project_name: steampipe-plugin-youtrack
+
+# No `before.hooks: [go mod tidy]` (the Turbot reference config has one):
+# `go mod tidy` writes go.mod/go.sum, which this config must never touch.
+# We don't use gomod.proxy, so there's no vendoring step that needs it, and
+# the Go module cache already handles concurrent `go build` downloads
+# safely without a pre-download hook.
+builds:
+  - id: steampipe-plugin-youtrack
+    main: .
+    binary: "{{ .ProjectName }}.plugin"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    # main.version/commit/date are the exact var names declared in main.go;
+    # -X only works because that package is main. No secrets are ever
+    # embedded here — Version/Commit/Date are git metadata only.
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .CommitDate }}
+    # Pin binary mtimes to the commit, not build wall-clock time, for
+    # reproducibility.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: steampipe-plugin-youtrack
+    ids:
+      - steampipe-plugin-youtrack
+    formats:
+      - tar.gz
+    # No version in the name: the Hub resolves versions via release tags,
+    # not filenames, and a stable name is Task 4's download-URL contract.
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    # GoReleaser adds README/LICENSE/CHANGELOG by default; the Hub contract
+    # requires the archive to contain only the plugin binary, so point
+    # `files` at a glob that (deliberately) matches nothing extra.
+    files:
+      - none*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - id: archive
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.spdx.json"
+    # Pinned syft version via `go run`, matching the goreleaser pin above.
+    # NOTE: `go run github.com/anchore/syft@<version>` (the form shown in
+    # syft's own generic docs) does NOT work — the module root has no main
+    # package. The cmd/syft subpackage is the one with `func main()`;
+    # verified locally before wiring this in.
+    cmd: go
+    # Skip the default `--enrich all`: it makes outbound network calls to
+    # package registries, which is both non-hermetic and a source of CI
+    # flakiness we don't need for a plugin binary's SBOM.
+    args:
+      - run
+      - github.com/anchore/syft/cmd/syft@v1.50.0
+      - "$artifact"
+      - --output
+      - spdx-json=$document
+
+release:
+  # Publication is gated by a later workflow (Task 4); GoReleaser only
+  # drafts the release here. We don't build Docker images, Homebrew
+  # formulas, or other artifacts that create rolling `v0`/`v0.1`-style
+  # alias tags, so none exist to disable.
+  draft: true

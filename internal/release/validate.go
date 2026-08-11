@@ -23,9 +23,14 @@ var releaseLabels = []string{labelReleaseMajor, labelReleaseMinor, labelReleaseP
 
 // ValidatePRInput models the PR metadata releasectl validate-pr consumes,
 // gathered by a workflow via `gh api` (never fetched by this package).
+// HeadRepo is the head repository's full name (e.g.
+// "RafPe/steampipe-youtrack", matching `gh api`'s
+// pull_request.head.repo.full_name) and is required so the generated-release
+// exemption cannot be spoofed by a fork (see isGeneratedReleasePR).
 type ValidatePRInput struct {
 	Labels       []string `json:"labels"`
 	HeadBranch   string   `json:"head_branch"`
+	HeadRepo     string   `json:"head_repo"`
 	ChangedFiles []string `json:"changed_files"`
 }
 
@@ -33,11 +38,15 @@ type ValidatePRInput struct {
 // against repository policy. fragmentsDir is the changelog fragments
 // directory, both as a repo-relative path (matched against
 // input.ChangedFiles) and as a filesystem path (read from the process's
-// working directory, i.e. the repo root in CI). On success it returns a
+// working directory, i.e. the repo root in CI). trustedRepo is the base
+// repository's full name (e.g. "RafPe/steampipe-youtrack"); only a PR whose
+// HeadRepo matches it can qualify for the generated-release exemption (see
+// isGeneratedReleasePR) -- callers must supply a non-empty trustedRepo, or
+// no PR will ever be treated as exempt. On success it returns a
 // human-readable summary suitable for printing; on failure it returns an
 // error describing the violation.
-func ValidatePR(input ValidatePRInput, fragmentsDir string) (string, error) {
-	if isGeneratedReleasePR(input.HeadBranch, input.Labels) {
+func ValidatePR(input ValidatePRInput, fragmentsDir, trustedRepo string) (string, error) {
+	if isGeneratedReleasePR(input.HeadRepo, input.HeadBranch, trustedRepo, input.Labels) {
 		return "ok: generated release pr, exempt from label and fragment checks", nil
 	}
 
@@ -72,12 +81,26 @@ func ValidatePR(input ValidatePRInput, fragmentsDir string) (string, error) {
 }
 
 // isGeneratedReleasePR reports whether a PR is the bot-generated release PR
-// that batches pending fragments into a version: identified by head branch
-// or the "autorelease: pending" label. Generated release PRs are exempt
+// that batches pending fragments into a version, and is therefore exempt
 // from label and fragment checks.
-func isGeneratedReleasePR(headBranch string, labels []string) bool {
-	if headBranch == generatedReleaseBranch {
-		return true
+//
+// All three signals must hold, not any one alone: headRepo must equal
+// trustedRepo, headBranch must be exactly "release/next", and the
+// "autorelease: pending" label must be present. Any partial combination
+// (right branch from a fork, right label on an ordinary branch, right repo
+// without the branch or label, and so on) is not exempt and is validated as
+// an ordinary PR. Branch name and label are both attacker-controlled by
+// anyone who can open a PR (including from a fork), so neither alone -- nor
+// both together -- is sufficient; a fork could otherwise name its branch
+// "release/next" and carry the label to bypass all metadata validation. An
+// empty trustedRepo never matches (fails closed): callers must supply the
+// real trusted base repository explicitly, never rely on a default.
+func isGeneratedReleasePR(headRepo, headBranch, trustedRepo string, labels []string) bool {
+	if trustedRepo == "" || headRepo != trustedRepo {
+		return false
+	}
+	if headBranch != generatedReleaseBranch {
+		return false
 	}
 	for _, l := range labels {
 		if l == labelAutoreleasePending {

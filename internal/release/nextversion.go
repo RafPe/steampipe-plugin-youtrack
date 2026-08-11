@@ -6,11 +6,15 @@ import (
 )
 
 // PRInfo is the release-relevant metadata for a single merged PR, gathered
-// by a workflow via `gh api`.
+// by a workflow via `gh api`. HeadRepo is the head repository's full name
+// (e.g. "RafPe/steampipe-youtrack", matching `gh api`'s
+// pull_request.head.repo.full_name); see ValidatePRInput.HeadRepo and
+// isGeneratedReleasePR for why it's required.
 type PRInfo struct {
 	Number     int      `json:"number"`
 	Labels     []string `json:"labels"`
 	HeadBranch string   `json:"head_branch"`
+	HeadRepo   string   `json:"head_repo"`
 }
 
 // NextVersionInput models the PRs merged since the previous release.
@@ -50,7 +54,13 @@ var bootstrapPreviousVersion = SemVer{Major: 0, Minor: 0, Patch: 0}
 // regardless of the bump labels actually observed on the releasable PRs.
 // This only overrides *which version* is computed; it does not force a
 // release when there are no releasable PRs.
-func NextVersion(input NextVersionInput) (NextVersionResult, error) {
+//
+// trustedRepo is passed through to isGeneratedReleasePR for each PR (see
+// ValidatePR's trustedRepo parameter for the spoofing rationale): a PR is
+// only ignored-as-generated when its HeadRepo equals trustedRepo, its
+// HeadBranch is exactly "release/next", and it carries the
+// "autorelease: pending" label -- all three, not any one alone.
+func NextVersion(input NextVersionInput, trustedRepo string) (NextVersionResult, error) {
 	bootstrap := strings.TrimSpace(input.PreviousTag) == ""
 
 	var previous SemVer
@@ -66,7 +76,7 @@ func NextVersion(input NextVersionInput) (NextVersionResult, error) {
 	highestBump := ""
 	releasable := false
 	for _, pr := range input.PRs {
-		if isGeneratedReleasePR(pr.HeadBranch, pr.Labels) {
+		if isGeneratedReleasePR(pr.HeadRepo, pr.HeadBranch, trustedRepo, pr.Labels) {
 			continue
 		}
 		label, err := classifyReleaseLabel(pr.Labels)

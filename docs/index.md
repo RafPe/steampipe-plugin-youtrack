@@ -5,4 +5,4 @@ The YouTrack plugin exposes read-only REST API resources as Steampipe tables. Co
 This is a community-maintained plugin, not an official JetBrains product. It
 is not affiliated with, endorsed by, or supported by JetBrains.
 
-See the table pages below and the repository README for installation and development commands.
+See the table pages below and the repository README for installation and development commands. See [Releases](releases.md) for how versions are cut and published.

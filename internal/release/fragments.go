@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -23,15 +24,20 @@ const (
 	kindDependencies = "Dependencies"
 )
 
-var validFragmentKinds = map[string]bool{
-	kindAdded:        true,
-	kindChanged:      true,
-	kindDeprecated:   true,
-	kindRemoved:      true,
-	kindFixed:        true,
-	kindSecurity:     true,
-	kindDependencies: true,
+// orderedFragmentKinds lists the valid kinds in .changie.yaml's declared
+// order, for building a helpful "want one of ..." message. validFragmentKinds
+// is derived from it so the two can never drift apart.
+var orderedFragmentKinds = []string{
+	kindAdded, kindChanged, kindDeprecated, kindRemoved, kindFixed, kindSecurity, kindDependencies,
 }
+
+var validFragmentKinds = func() map[string]bool {
+	m := make(map[string]bool, len(orderedFragmentKinds))
+	for _, k := range orderedFragmentKinds {
+		m[k] = true
+	}
+	return m
+}()
 
 // fragment mirrors the subset of a Changie fragment's YAML shape (see
 // task-1-report.md) that validation needs: kind and body. The time field is
@@ -90,6 +96,34 @@ func fragmentCandidates(fragmentsDir string, changedFiles []string) ([]string, e
 	return candidates, nil
 }
 
+// listFragmentFiles returns the cleaned, repo-relative paths of every
+// ".yaml" file directly inside dir (non-recursive; non-YAML entries such as
+// ".gitkeep" are skipped, matching fragmentCandidates), sorted for
+// deterministic output. It performs no content validation -- pair with
+// validateFragmentFile per returned path, as releasectl validate-fragments
+// does.
+func listFragmentFiles(dir string) ([]string, error) {
+	cleanDir := filepath.Clean(strings.TrimSpace(dir))
+	if cleanDir == "" || cleanDir == "." {
+		return nil, fmt.Errorf("fragments directory must not be empty")
+	}
+
+	entries, err := os.ReadDir(cleanDir)
+	if err != nil {
+		return nil, fmt.Errorf("fragments directory %q: %w", dir, err)
+	}
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
+			continue
+		}
+		files = append(files, filepath.Join(cleanDir, entry.Name()))
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
 // validateFragmentFile reads and validates a single fragment file at
 // relPath (as returned by fragmentCandidates): it must resolve (following
 // symlinks) to a location still inside fragmentsDir, exist on disk, parse
@@ -118,7 +152,13 @@ func validateFragmentFile(fragmentsDir, relPath string) error {
 		return fmt.Errorf("fragment %q: invalid yaml", relPath)
 	}
 	if !validFragmentKinds[frag.Kind] {
-		return fmt.Errorf("fragment %q: unknown kind %q", relPath, frag.Kind)
+		// frag.Kind is deliberately not included in this message: it's
+		// attacker-controlled fragment content, and echoing it back would
+		// let a credential-shaped kind value leak into stderr/CI logs the
+		// same way a credential-shaped body could (see containsCredentialShape
+		// below, which only scans Body). Naming the allowed kinds is more
+		// actionable for a contributor anyway.
+		return fmt.Errorf("fragment %q: unknown kind, want one of %s", relPath, strings.Join(orderedFragmentKinds, ", "))
 	}
 	if strings.TrimSpace(frag.Body) == "" {
 		return fmt.Errorf("fragment %q: empty body", relPath)

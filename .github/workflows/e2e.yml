@@ -1,11 +1,21 @@
 name: E2E
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (commit SHA, branch, or tag) to check out for the E2E run.
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to check out. Defaults to the ref that triggered this run.
+        required: false
+        type: string
+        default: ""
   schedule:
     - cron: "17 3 * * 1"
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -14,11 +24,46 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # Protected environment: the maintainer must create an "e2e" environment
+    # in repo settings and add a YOUTRACK_TOKEN secret to it. Environment
+    # secrets are resolved from THIS repo regardless of how the job was
+    # triggered (workflow_call, workflow_dispatch, or schedule) — see
+    # GitHub's reusable-workflows docs: "the environment secret will be
+    # used, and not the secret passed from the caller workflow."
+    environment: e2e
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5.0.0
-      - uses: actions/setup-go@v6.0.0
+      # inputs.ref resolves to whichever trigger fired (workflow_call's
+      # required input or workflow_dispatch's optional one); for `schedule`,
+      # which declares no inputs, this is empty and actions/checkout falls
+      # back to its own default ref resolution.
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
           cache: true
+      - name: Require YOUTRACK_TOKEN
+        env:
+          YOUTRACK_TOKEN: ${{ secrets.YOUTRACK_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "${YOUTRACK_TOKEN:-}" ]; then
+            echo "::error::YOUTRACK_TOKEN secret is not set on the 'e2e' environment. A maintainer must create the environment and add the secret (see docs/e2e.md) before E2E can run — this is a hard failure, not a skip." >&2
+            exit 1
+          fi
+          # Defense in depth: the token is already auto-masked because it's
+          # referenced via the secrets context below, but mask explicitly
+          # too in case any step transforms it before printing.
+          echo "::add-mask::$YOUTRACK_TOKEN"
       - name: End-to-end tests
+        env:
+          YOUTRACK_TOKEN: ${{ secrets.YOUTRACK_TOKEN }}
         run: make e2e
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --project-directory "$GITHUB_WORKSPACE" -f "$GITHUB_WORKSPACE/docker-compose.yml" down --remove-orphans || true
+          rm -rf "$GITHUB_WORKSPACE/tests/e2e/.state"

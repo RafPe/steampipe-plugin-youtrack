@@ -58,32 +58,25 @@ fi
 
 # --- 2. Live fragment validation ----------------------------------------
 #
-# Separately, validate every real unreleased fragment. Running the real
-# config's `batch --dry-run` against .changes/unreleased/ already parses
-# each fragment as YAML and rejects any kind not declared in .changie.yaml
-# (changie exits non-zero before printing anything on either failure), so
-# this doubles as that check. It does not enforce a non-empty body, so
-# check that explicitly here.
-if ! CHANGIE_CONFIG_PATH="$real_config" \
-	go run "github.com/miniscruff/changie@${changie_version}" batch "$test_version" --dry-run \
-	>"$work_dir/live.txt"; then
-	echo "changie failed to parse .changes/unreleased/ fragments:" >&2
-	cat "$work_dir/live.txt" >&2
-	exit 1
-fi
-
+# Delegates entirely to `releasectl validate-fragments`, which parses every
+# fragment with a real YAML parser (internal/release's fragments.go, the
+# same code validate-pr uses) and checks: known kind, a non-empty
+# (non-whitespace) body, path safety, and credential-shape rejection. This
+# replaces the previous sed/grep-based body check, which only inspected the
+# first line matching "^body:" and treated a whitespace-only body (e.g.
+# "body: '   '") as non-empty, and adds the credential scan changie batch
+# alone never performed.
 fragment_count=0
 for fragment in "$fragments_dir"/*.yaml; do
 	[ -e "$fragment" ] || continue
 	fragment_count=$((fragment_count + 1))
-
-	body="$(sed -n 's/^body: *//p' "$fragment" | head -n 1)"
-	case "$body" in
-	'' | '""' | "''")
-		echo "fragment $fragment has an empty body" >&2
-		exit 1
-		;;
-	esac
 done
+
+if ! go run ./cmd/releasectl validate-fragments --dir "$fragments_dir" \
+	>"$work_dir/validate-fragments.txt" 2>&1; then
+	echo "releasectl validate-fragments failed:" >&2
+	cat "$work_dir/validate-fragments.txt" >&2
+	exit 1
+fi
 
 echo "changelog-check: ok ($fragment_count unreleased fragment(s), changie ${changie_version})"
