@@ -123,3 +123,14 @@ To validate the harness without starting the large images, run
 `tests/e2e/check.sh`. To remove all generated state, including the initialized
 YouTrack database and its tokens, run `tests/e2e/cleanup.sh`. The next E2E run
 will require the one-time wizard and a newly generated permanent token.
+
+## Running E2E on a pull request
+
+E2E does not run on every pull request by default -- it's slow and starts a
+real ~2GB container. Apply the `e2e` label to a pull request to opt it in:
+every push to that pull request then runs the full suite (`.github/workflows/e2e.yml`'s
+`pull_request` trigger), gated on the label being present at the time of each
+push. Remove the label to stop; a pull request without the label is
+unaffected. Since E2E provisions its own throwaway YouTrack instance and
+uses no secret, this is safe to enable on a pull request from a fork -- there
+is no stored credential for it to expose.
