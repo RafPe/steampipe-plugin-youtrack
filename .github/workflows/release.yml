@@ -205,7 +205,6 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       ref: ${{ needs.verify.outputs.merge_sha }}
-    secrets: inherit
 
   tag:
     needs: [verify, e2e]

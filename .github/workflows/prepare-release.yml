@@ -221,7 +221,6 @@ jobs:
             echo
             echo "### Maintainer checklist"
             echo "- [ ] Backward compatibility reviewed"
-            echo "- [ ] E2E credentials (the \`e2e\` environment's \`YOUTRACK_TOKEN\`) are configured and current"
             echo "- [ ] Publication approved — merging this PR triggers \`release.yml\`, which tags and publishes"
             echo
             echo "---"

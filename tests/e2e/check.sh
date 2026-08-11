@@ -6,6 +6,7 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 docker compose --project-directory "$repo_dir" -f "$repo_dir/docker-compose.yml" config --quiet
 sh -n "$repo_dir/tests/e2e/run.sh"
 sh -n "$repo_dir/tests/e2e/cleanup.sh"
+sh -n "$repo_dir/tests/e2e/provision.sh"
 
 grep -E 'jetbrains/youtrack:2026\.1\.13874@sha256:[0-9a-f]{64}' "$repo_dir/docker-compose.yml" >/dev/null
 grep -F '127.0.0.1:${YOUTRACK_PORT:-18080}:8080' "$repo_dir/docker-compose.yml" >/dev/null
@@ -14,6 +15,7 @@ grep -F 'checksums.txt' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'sha256' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'chmod 600' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'token    = env("YOUTRACK_TOKEN")' "$repo_dir/tests/e2e/run.sh" >/dev/null
+grep -F 'tests/e2e/provision.sh' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'curl --header @-' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'base_url = "http://127.0.0.1:' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F '/api/admin/timeTrackingSettings/workItemTypes' "$repo_dir/tests/e2e/run.sh" >/dev/null

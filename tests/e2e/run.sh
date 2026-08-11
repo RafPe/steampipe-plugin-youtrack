@@ -49,13 +49,25 @@ assert_count() {
   label=$1
   query=$2
   minimum=${3:-1}
-  got=$(sql_json "$query" | jq -er '.[0].result')
+  got=$(sql_json "$query" | jq -er '.rows[0].result')
   [ "$got" -ge "$minimum" ] || fail "$label returned $got rows, want at least $minimum"
 }
 
 for command_name in docker curl jq go; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
+
+# No real YouTrack token is ever stored as a secret: by default this
+# provisions its own throwaway instance and token via provision.sh. Set
+# YOUTRACK_TOKEN explicitly to point at a token you minted yourself (e.g.
+# against a long-lived local dev instance) and skip provisioning.
+provisioned=0
+if [ -z "${YOUTRACK_TOKEN:-}" ]; then
+  YOUTRACK_TOKEN=$("$repo_dir/tests/e2e/provision.sh") ||
+    fail "automatic YouTrack provisioning failed (see tests/e2e/provision.sh output above); alternatively set YOUTRACK_TOKEN yourself, see docs/e2e.md"
+  export YOUTRACK_TOKEN
+  provisioned=1
+fi
 [ -n "${YOUTRACK_TOKEN:-}" ] || fail "YOUTRACK_TOKEN is required; see docs/e2e.md"
 if printf '%s' "$YOUTRACK_TOKEN" | LC_ALL=C grep '[[:cntrl:]]' >/dev/null; then
   fail "YOUTRACK_TOKEN contains unsupported control characters"
@@ -148,6 +160,13 @@ connection "youtrack_unavailable" {
 EOF
 chmod 600 "$config_dir/youtrack.spc"
 
+# The first query against a cold Steampipe install starts the local
+# service and loads the plugin schema asynchronously, so
+# information_schema can transiently report zero youtrack_* tables if the
+# real assertions below query it immediately. Force that warm-up here,
+# once, before it matters.
+sql_json 'select 1;' >/dev/null
+
 export E2E_UID=${E2E_UID:-$(id -u)}
 export E2E_GID=${E2E_GID:-$(id -g)}
 
@@ -163,7 +182,14 @@ cleanup() {
   if [ -n "${work_item_type_id:-}" ]; then
     api DELETE "/api/admin/timeTrackingSettings/workItemTypes/$work_item_type_id" >/dev/null 2>&1 || true
   fi
-  compose down --remove-orphans >/dev/null 2>&1 || true
+  if [ "$provisioned" -eq 1 ] && [ "${E2E_REUSE:-0}" != "1" ]; then
+    # This run provisioned its own throwaway instance and isn't keeping it
+    # around for reuse: destroy the volumes along with the containers so no
+    # minted credentials outlive the run.
+    compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+  else
+    compose down --remove-orphans >/dev/null 2>&1 || true
+  fi
   if [ -n "$(compose ps -q 2>/dev/null)" ]; then
     printf '%s\n' "e2e: compose containers remain after cleanup" >&2
     cleanup_failed=1
@@ -188,8 +214,11 @@ work_item_type_response=$(api POST \
   '/api/admin/timeTrackingSettings/workItemTypes?fields=id,name,autoAttached' \
   "$(jq -n --arg name "E2E work item type $run_suffix" '{name: $name, autoAttached: true}')")
 work_item_type_id=$(printf '%s' "$work_item_type_response" | jq -er '.id')
+# autoAttached only governs future projects; against a brand-new instance
+# (no pre-existing default time-tracking bundle) it does not retroactively
+# attach the type to this already-created project, so attach it explicitly.
 api POST "/api/admin/projects/$project_id/timeTrackingSettings?fields=enabled,workItemTypes(id,name,autoAttached)" \
-  '{"enabled":true}' >/dev/null
+  "$(jq -n --arg type_id "$work_item_type_id" '{enabled: true, workItemTypes: [{id: $type_id}]}')" >/dev/null
 
 # Seed 101 issues so the list path must cross the client's 100-row page boundary.
 issue_number=1
@@ -286,8 +315,17 @@ api DELETE "/api/agiles/$agile_id" >/dev/null; agile_id=
 api DELETE "/api/savedQueries/$saved_query_id" >/dev/null; saved_query_id=
 api DELETE "/api/tags/$tag_id" >/dev/null; tag_id=
 api DELETE "/api/admin/projects/$project_id" >/dev/null
-status=$(authorization_header | curl --header @- --silent --output /dev/null \
-  --write-out '%{http_code}' "$base_url/api/admin/projects/$project_id")
+# Project deletion is asynchronous: DELETE returns before the project is
+# actually gone, so poll briefly rather than checking once.
+deletion_attempt=0
+status=000
+while [ "$deletion_attempt" -lt 15 ]; do
+  status=$(authorization_header | curl --header @- --silent --output /dev/null \
+    --write-out '%{http_code}' "$base_url/api/admin/projects/$project_id")
+  [ "$status" = 404 ] && break
+  deletion_attempt=$((deletion_attempt + 1))
+  sleep 1
+done
 [ "$status" = 404 ] || fail "seeded project still exists after cleanup (HTTP $status)"
 project_id=
 
