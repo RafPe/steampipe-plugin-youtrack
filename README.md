@@ -57,10 +57,12 @@ Use `make test`, `make test-race`, `make test-contract`, `make test-integration`
 
 ## Releases
 
-Releases are cut from a label on each pull request (`release/major`,
-`release/minor`, `release/patch`, or `release/skip`) and a Changie changelog
-fragment; a generated pull request batches them into a version, and merging
-it triggers tagging, artifact builds, and publication. See
+Releases are review-gated. Each ordinary pull request has exactly one label
+(`release/major`, `release/minor`, `release/patch`, or `release/skip`) and each
+non-skip change has a Changie fragment. Ordinary merges never publish. A
+maintainer runs **Prepare Release**, reviews the generated `release/next` pull
+request, and merging it triggers verification, E2E, immutable tagging,
+artifact builds, and publication with the curated changelog as release notes. See
 [docs/releases.md](docs/releases.md) for the full contributor and maintainer
 guide, including recovery procedures and artifact verification.
 
