@@ -25,7 +25,7 @@ Create a permanent token in your YouTrack profile. Treat it as a password: store
 
 ```hcl
 connection "youtrack" {
-  plugin   = "youtrack"
+  plugin   = "rafpe/youtrack"
   base_url = "https://example.youtrack.cloud"
   token    = "perm:cmFmcGU=.UGVybWFuZW50IHRva2Vu.abcdefghij1234567890"
 }
