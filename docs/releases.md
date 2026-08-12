@@ -14,7 +14,7 @@ published without a merge to `main`.
 | Changelog fragment | The user-facing changelog text for one change. | `.changes/unreleased/*.yaml`, added with `changie new`. |
 | Release pull request (`release/next` -> `main`) | The human approval gate. Merging it is what triggers tagging and publication. | Opened/updated by `prepare-release.yml`, labeled `autorelease: pending`. |
 | `vX.Y.Z` tag | The released version. Immutable once created; never moved or deleted. | Created by `release.yml`'s `tag` job on the merge commit. |
-| GoReleaser | Builds the release artifacts (archives, checksums, SBOMs) and drafts the GitHub Release. | `.goreleaser.yml`, run by `release.yml`'s `publish` job. |
+| GoReleaser | Builds the release artifacts (archives, checksums, SBOMs) and drafts the GitHub Release using the batched Changie section as its notes. | `.goreleaser.yml`, run by `release.yml`'s `publish` job. |
 
 ## Choosing a release label
 

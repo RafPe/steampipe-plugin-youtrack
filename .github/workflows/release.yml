@@ -278,7 +278,10 @@ jobs:
       - name: Run goreleaser
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: go run github.com/goreleaser/goreleaser/v2@v2.17.1 release --clean
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          cp ".changes/${VERSION}.md" release-notes.md
+          go run github.com/goreleaser/goreleaser/v2@v2.17.1 release --clean --release-notes release-notes.md
 
       - name: Verify checksums manifest
         run: |
