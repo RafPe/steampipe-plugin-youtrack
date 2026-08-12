@@ -296,10 +296,16 @@ release_workflow=".github/workflows/release.yml"
 grep -q '\.changes/\${VERSION}\.md' "$release_workflow" ||
 	fail "C3: $release_workflow no longer asserts the v-prefixed .changes/\${VERSION}.md filename"
 
+# --- 4. C4: published notes come from the curated changelog ----------------
+grep -q -- '--release-notes release-notes.md' "$release_workflow" ||
+	fail "C4: GoReleaser must receive the curated changelog section as release notes"
+grep -q 'Prepare Release' README.md ||
+	fail "C4: README must summarize the explicit Prepare Release gate"
+
 # --- Mutation safety: this checkout must never be touched ------------------
 if [ -n "$(git -C "$repo_root" status --porcelain -- CHANGELOG.md .changes 2>/dev/null)" ]; then
 	git -C "$repo_root" status --porcelain -- CHANGELOG.md .changes >&2
 	fail "this checkout's CHANGELOG.md/.changes were modified by the checks above -- they must only ever touch $work_dir"
 fi
 
-echo "release-contract-check: ok (C1 fragment layout + traversal guard + same-repo bootstrap, C2 gh api -X GET + jq projection, C3 changie filename)"
+echo "release-contract-check: ok (C1 fragment safety, C2 GitHub API contract, C3 changie filename, C4 curated release notes)"
