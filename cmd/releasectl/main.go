@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"github.com/RafPe/steampipe-youtrack/internal/release"
+	"github.com/RafPe/steampipe-plugin-youtrack/internal/release"
 )
 
 func main() {

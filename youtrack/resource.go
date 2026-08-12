@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/RafPe/steampipe-youtrack/youtrack/client"
+	"github.com/RafPe/steampipe-plugin-youtrack/youtrack/client"
 	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/transform"

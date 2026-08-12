@@ -9,11 +9,11 @@ import (
 // trustedRepoForTests is the base repository full name used across
 // internal/release's tests wherever a generated-release exemption should
 // actually be granted (see isGeneratedReleasePR).
-const trustedRepoForTests = "RafPe/steampipe-youtrack"
+const trustedRepoForTests = "RafPe/steampipe-plugin-youtrack"
 
 // forkRepoForTests is an untrusted head repository, used to prove a fork
 // cannot spoof the generated-release exemption.
-const forkRepoForTests = "attacker/steampipe-youtrack"
+const forkRepoForTests = "attacker/steampipe-plugin-youtrack"
 
 func TestClassifyReleaseLabel(t *testing.T) {
 	t.Parallel()

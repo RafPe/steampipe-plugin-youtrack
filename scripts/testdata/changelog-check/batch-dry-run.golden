@@ -8,5 +8,5 @@
 
 - Second fixture change, used to exercise multi-kind ordering in scripts/changelog-check.sh.
 
-[0.1.0]: https://github.com/RafPe/steampipe-youtrack/compare/v0.0.0...v0.1.0
+[0.1.0]: https://github.com/RafPe/steampipe-plugin-youtrack/compare/v0.0.0...v0.1.0
 

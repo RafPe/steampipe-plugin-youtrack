@@ -9,7 +9,7 @@ trap 'rm -f "$coverage_file"' EXIT HUP INT TERM
 # cmd/releasectl (release.Run, per task-2-brief.md). Every testable
 # first-party package, including internal/release itself, must maintain
 # 100% statement coverage.
-packages="$(go list ./... | grep -v '^github.com/RafPe/steampipe-youtrack$' | grep -v '^github.com/RafPe/steampipe-youtrack/cmd/releasectl$')"
+packages="$(go list ./... | grep -v '^github.com/RafPe/steampipe-plugin-youtrack$' | grep -v '^github.com/RafPe/steampipe-plugin-youtrack/cmd/releasectl$')"
 go test -covermode=atomic -coverprofile="$coverage_file" $packages
 go tool cover -func="$coverage_file"
 

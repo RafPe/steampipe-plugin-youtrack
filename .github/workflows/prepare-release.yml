@@ -108,7 +108,7 @@ jobs:
 
           set +e
           output="$(printf '%s' "$payload" | go run ./cmd/releasectl next-version \
-            --input - --trusted-repo RafPe/steampipe-youtrack)"
+            --input - --trusted-repo RafPe/steampipe-plugin-youtrack)"
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then

@@ -35,7 +35,7 @@ jobs:
       # contract: base necessarily predates that change, so the base-built
       # binary rejects the very payload shape the PR's own workflow now
       # sends. Confirmed live: PR #5
-      # (https://github.com/RafPe/steampipe-youtrack/pull/5, a same-repo
+      # (https://github.com/RafPe/steampipe-plugin-youtrack/pull/5, a same-repo
       # PR that added --trusted-repo) failed with `invalid flags: flag
       # provided but not defined: -trusted-repo`, because base's
       # releasectl at the time only registered --input/--fragments-dir.
@@ -270,7 +270,7 @@ jobs:
             cd "$validate_cwd" &&
             "$RUNNER_TEMP/releasectl" validate-pr \
               --input "$RUNNER_TEMP/pr-payload.json" \
-              --trusted-repo RafPe/steampipe-youtrack \
+              --trusted-repo RafPe/steampipe-plugin-youtrack \
               --fragments-dir .changes/unreleased 2>&1
           )"
           status=$?

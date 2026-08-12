@@ -150,8 +150,8 @@ triggered this release."
 You can run the same computation `prepare-release.yml` uses locally:
 
 ```sh
-echo '{"previous_tag":"","prs":[{"number":1,"labels":["release/minor"],"head_branch":"feat/x","head_repo":"RafPe/steampipe-youtrack"}]}' \
-  | go run ./cmd/releasectl next-version --input - --trusted-repo RafPe/steampipe-youtrack
+echo '{"previous_tag":"","prs":[{"number":1,"labels":["release/minor"],"head_branch":"feat/x","head_repo":"RafPe/steampipe-plugin-youtrack"}]}' \
+  | go run ./cmd/releasectl next-version --input - --trusted-repo RafPe/steampipe-plugin-youtrack
 # {"release":true,"version":"v0.1.0","previous":"v0.0.0","bump":"minor"}
 ```
 
@@ -198,7 +198,7 @@ for it to touch.
 `prepare-release.yml` is `workflow_dispatch`-only, with no inputs:
 
 ```sh
-gh workflow run prepare-release.yml --repo RafPe/steampipe-youtrack --ref main
+gh workflow run prepare-release.yml --repo RafPe/steampipe-plugin-youtrack --ref main
 ```
 
 It is safe to run at any time. If there is nothing releasable (every merged
@@ -325,7 +325,7 @@ yet, or uses the built-in recovery path for something that has.
   `release.yml`'s `workflow_dispatch` recovery mode with the existing tag:
 
   ```sh
-  gh workflow run release.yml --repo RafPe/steampipe-youtrack --ref main -f tag=vX.Y.Z
+  gh workflow run release.yml --repo RafPe/steampipe-plugin-youtrack --ref main -f tag=vX.Y.Z
   ```
 
   `verify` confirms the tag points at the expected merge commit, `tag`
@@ -345,7 +345,7 @@ yet, or uses the built-in recovery path for something that has.
   silently reusing or overwriting it. If the manual tag was never
   associated with a published GitHub Release, a maintainer with push
   access can delete just that tag (`gh api -X DELETE
-  repos/RafPe/steampipe-youtrack/git/refs/tags/vX.Y.Z`) and rerun
+  repos/RafPe/steampipe-plugin-youtrack/git/refs/tags/vX.Y.Z`) and rerun
   `prepare-release.yml`. If it already has a published release attached,
   treat it like any other published tag: leave it and ship a new patch.
 - **GitHub API throttling or an outage.** Every write in these workflows
@@ -363,7 +363,7 @@ Every release asset can be verified independently of trusting the GitHub
 Release page:
 
 ```sh
-gh release download vX.Y.Z --repo RafPe/steampipe-youtrack --dir dist
+gh release download vX.Y.Z --repo RafPe/steampipe-plugin-youtrack --dir dist
 cd dist
 
 # Checksums
@@ -372,7 +372,7 @@ sha256sum -c checksums.txt        # or: shasum -a 256 -c checksums.txt
 # Build provenance attestation (gh attestation is a built-in gh CLI
 # command on a recent gh, not a separate extension to install)
 gh attestation verify steampipe-plugin-youtrack_linux_amd64.tar.gz \
-  --repo RafPe/steampipe-youtrack
+  --repo RafPe/steampipe-plugin-youtrack
 
 # SBOM inspection (SPDX JSON, one per archive)
 jq '.packages[] | {name, versionInfo}' \
@@ -390,7 +390,7 @@ naming and packaging contract (binary name, archive name, per-platform
 matrix, checksums, SBOMs). What Turbot needs to complete Hub onboarding, on
 top of that:
 
-- The repository URL (`https://github.com/RafPe/steampipe-youtrack`).
+- The repository URL (`https://github.com/RafPe/steampipe-plugin-youtrack`).
 - At least one published (non-draft) release tag, e.g. `v0.1.0`.
 - The repository metadata the [Plugin Release
   Checklist](https://steampipe.io/docs/develop/plugin-release-checklist)

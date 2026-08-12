@@ -1,0 +1,3 @@
+kind: Changed
+body: Renamed the repository from steampipe-youtrack to steampipe-plugin-youtrack to satisfy the Steampipe Hub naming convention; module path, install/documentation URLs, and workflow references were updated to match.
+time: 2026-08-12T13:41:55.875615+03:00
