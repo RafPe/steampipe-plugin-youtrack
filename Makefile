@@ -78,8 +78,8 @@ release-snapshot:
 # release-snapshot proves the artifacts build; this also prints how the next
 # release version would be computed, without creating anything. Try it
 # yourself, e.g.:
-#   echo '{"previous_tag":"","prs":[{"number":1,"labels":["release/minor"],"head_branch":"feat/x","head_repo":"RafPe/steampipe-youtrack"}]}' \
-#     | go run ./cmd/releasectl next-version --input - --trusted-repo RafPe/steampipe-youtrack
+#   echo '{"previous_tag":"","prs":[{"number":1,"labels":["release/minor"],"head_branch":"feat/x","head_repo":"RafPe/steampipe-plugin-youtrack"}]}' \
+#     | go run ./cmd/releasectl next-version --input - --trusted-repo RafPe/steampipe-plugin-youtrack
 release-dry-run: release-snapshot
 	@echo "release-dry-run: snapshot build ok."
 	@echo "release-dry-run: next-version reads {\"previous_tag\":\"vX.Y.Z\"|\"\",\"prs\":[...]} on stdin and"
@@ -87,7 +87,7 @@ release-dry-run: release-snapshot
 	@echo "  {\"release\":false,\"reason\":...}. Bootstrap (empty previous_tag) always computes"
 	@echo "  v0.1.0/minor regardless of PR labels — see internal/release's CLI contract."
 	@echo "  Example:"
-	@echo "    echo '{\"previous_tag\":\"\",\"prs\":[{\"number\":1,\"labels\":[\"release/minor\"],\"head_branch\":\"feat/x\",\"head_repo\":\"RafPe/steampipe-youtrack\"}]}' \\"
-	@echo "      | go run ./cmd/releasectl next-version --input - --trusted-repo RafPe/steampipe-youtrack"
+	@echo "    echo '{\"previous_tag\":\"\",\"prs\":[{\"number\":1,\"labels\":[\"release/minor\"],\"head_branch\":\"feat/x\",\"head_repo\":\"RafPe/steampipe-plugin-youtrack\"}]}' \\"
+	@echo "      | go run ./cmd/releasectl next-version --input - --trusted-repo RafPe/steampipe-plugin-youtrack"
 
 check: fmt test test-contract test-integration coverage test-race vet lint build docs security release-validate release-check

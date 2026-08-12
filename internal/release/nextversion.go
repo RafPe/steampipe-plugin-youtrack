@@ -7,7 +7,7 @@ import (
 
 // PRInfo is the release-relevant metadata for a single merged PR, gathered
 // by a workflow via `gh api`. HeadRepo is the head repository's full name
-// (e.g. "RafPe/steampipe-youtrack", matching `gh api`'s
+// (e.g. "RafPe/steampipe-plugin-youtrack", matching `gh api`'s
 // pull_request.head.repo.full_name); see ValidatePRInput.HeadRepo and
 // isGeneratedReleasePR for why it's required.
 type PRInfo struct {

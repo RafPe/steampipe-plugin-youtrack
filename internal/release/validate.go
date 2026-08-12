@@ -24,7 +24,7 @@ var releaseLabels = []string{labelReleaseMajor, labelReleaseMinor, labelReleaseP
 // ValidatePRInput models the PR metadata releasectl validate-pr consumes,
 // gathered by a workflow via `gh api` (never fetched by this package).
 // HeadRepo is the head repository's full name (e.g.
-// "RafPe/steampipe-youtrack", matching `gh api`'s
+// "RafPe/steampipe-plugin-youtrack", matching `gh api`'s
 // pull_request.head.repo.full_name) and is required so the generated-release
 // exemption cannot be spoofed by a fork (see isGeneratedReleasePR).
 type ValidatePRInput struct {
@@ -39,7 +39,7 @@ type ValidatePRInput struct {
 // directory, both as a repo-relative path (matched against
 // input.ChangedFiles) and as a filesystem path (read from the process's
 // working directory, i.e. the repo root in CI). trustedRepo is the base
-// repository's full name (e.g. "RafPe/steampipe-youtrack"); only a PR whose
+// repository's full name (e.g. "RafPe/steampipe-plugin-youtrack"); only a PR whose
 // HeadRepo matches it can qualify for the generated-release exemption (see
 // isGeneratedReleasePR) -- callers must supply a non-empty trustedRepo, or
 // no PR will ever be treated as exempt. On success it returns a

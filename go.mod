@@ -1,4 +1,4 @@
-module github.com/RafPe/steampipe-youtrack
+module github.com/RafPe/steampipe-plugin-youtrack
 
 go 1.26.0
 

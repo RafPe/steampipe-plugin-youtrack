@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/RafPe/steampipe-youtrack/youtrack"
+	"github.com/RafPe/steampipe-plugin-youtrack/youtrack"
 	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 )
 

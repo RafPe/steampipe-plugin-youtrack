@@ -10,7 +10,7 @@ reporting a vulnerability.
 ## Reporting a vulnerability
 
 Report vulnerabilities through
-[GitHub private vulnerability reporting](https://github.com/RafPe/steampipe-youtrack/security/advisories/new).
+[GitHub private vulnerability reporting](https://github.com/RafPe/steampipe-plugin-youtrack/security/advisories/new).
 Do not include tokens, authorization headers, private YouTrack data, or other
 credentials in a report. Use synthetic values and redact diagnostic output.
 

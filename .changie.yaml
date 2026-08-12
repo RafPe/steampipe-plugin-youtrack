@@ -1,4 +1,4 @@
-# Changie configuration for steampipe-youtrack.
+# Changie configuration for steampipe-plugin-youtrack.
 #
 # Changie is the SOLE owner of CHANGELOG.md release sections (the
 # "## [x.y.z] - YYYY-MM-DD" headings and everything under them). No other
@@ -34,7 +34,7 @@ changeFormat: "- {{.Body}}"
 # Comparison link, Keep a Changelog style. Resolves once the previous tag
 # exists; for the very first release PreviousVersion defaults to "v0.0.0".
 footerFormat: |
-  [{{.VersionNoPrefix}}]: https://github.com/RafPe/steampipe-youtrack/compare/{{.PreviousVersion}}...{{.Version}}
+  [{{.VersionNoPrefix}}]: https://github.com/RafPe/steampipe-plugin-youtrack/compare/{{.PreviousVersion}}...{{.Version}}
 
 # Kind order below is authoritative: it is both the prompt order in
 # `changie new` and the section order Changie renders in a batched release.

@@ -61,7 +61,7 @@ valid_output="$(
 	cd "$fragments_scratch" &&
 		set +e
 	printf '%s' "$valid_payload" | "$releasectl_bin" validate-pr \
-		--input - --trusted-repo RafPe/steampipe-youtrack --fragments-dir .changes/unreleased 2>&1
+		--input - --trusted-repo RafPe/steampipe-plugin-youtrack --fragments-dir .changes/unreleased 2>&1
 	echo "EXIT:$?"
 )"
 valid_status="$(printf '%s\n' "$valid_output" | sed -n 's/^EXIT://p')"
@@ -77,7 +77,7 @@ invalid_output="$(
 	cd "$fragments_scratch" &&
 		set +e
 	printf '%s' "$invalid_payload" | "$releasectl_bin" validate-pr \
-		--input - --trusted-repo RafPe/steampipe-youtrack --fragments-dir .changes/unreleased 2>&1
+		--input - --trusted-repo RafPe/steampipe-plugin-youtrack --fragments-dir .changes/unreleased 2>&1
 	echo "EXIT:$?"
 )"
 invalid_status="$(printf '%s\n' "$invalid_output" | sed -n 's/^EXIT://p')"
@@ -184,7 +184,7 @@ fi
 
 # --- 1c. C1 bootstrap: same-repo path validates against HEAD's CLI ---------
 #
-# Live failure (https://github.com/RafPe/steampipe-youtrack/pull/5): a
+# Live failure (https://github.com/RafPe/steampipe-plugin-youtrack/pull/5): a
 # same-repo PR that adds a new releasectl flag (--trusted-repo, in that
 # case) cannot be validated by a releasectl built from base.sha, because
 # base necessarily predates the PR's own CLI change -- the base-built
