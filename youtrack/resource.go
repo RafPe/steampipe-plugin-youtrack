@@ -273,6 +273,7 @@ func queryClient(d *plugin.QueryData) (*client.Client, error) {
 	if !ok {
 		return nil, errors.New("invalid YouTrack connection configuration")
 	}
+	config = config.withEnvFallback()
 	if err := ValidateConfig(&config); err != nil {
 		return nil, fmt.Errorf("validate YouTrack connection: %w", err)
 	}

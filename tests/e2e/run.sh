@@ -145,13 +145,13 @@ cat >"$config_dir/youtrack.spc" <<EOF
 connection "youtrack" {
   plugin   = "local/youtrack"
   base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
-  token    = env("YOUTRACK_TOKEN")
+  # token is provided via the YOUTRACK_TOKEN environment variable
 }
 
 connection "youtrack_secondary" {
   plugin   = "local/youtrack"
   base_url = "http://127.0.0.1:${YOUTRACK_PORT:-18080}"
-  token    = env("YOUTRACK_TOKEN")
+  # token is provided via the YOUTRACK_TOKEN environment variable
 }
 
 connection "youtrack_invalid" {

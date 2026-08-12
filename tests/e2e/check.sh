@@ -14,7 +14,11 @@ grep -F 'steampipe_version=2.3.2' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'checksums.txt' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'sha256' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'chmod 600' "$repo_dir/tests/e2e/run.sh" >/dev/null
-grep -F 'token    = env("YOUTRACK_TOKEN")' "$repo_dir/tests/e2e/run.sh" >/dev/null
+grep -F '# token is provided via the YOUTRACK_TOKEN environment variable' "$repo_dir/tests/e2e/run.sh" >/dev/null
+if grep -F 'token    = "$YOUTRACK_TOKEN"' "$repo_dir/tests/e2e/run.sh" >/dev/null; then
+  printf '%s\n' "e2e: token must not be expanded into the connection file" >&2
+  exit 1
+fi
 grep -F 'tests/e2e/provision.sh' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'curl --header @-' "$repo_dir/tests/e2e/run.sh" >/dev/null
 grep -F 'base_url = "http://127.0.0.1:' "$repo_dir/tests/e2e/run.sh" >/dev/null

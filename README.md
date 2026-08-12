@@ -27,9 +27,13 @@ Create a permanent token in your YouTrack profile. Treat it as a password: store
 connection "youtrack" {
   plugin   = "youtrack"
   base_url = "https://example.youtrack.cloud"
-  token    = env("YOUTRACK_TOKEN")
+  token    = "perm:cmFmcGU=.UGVybWFuZW50IHRva2Vu.abcdefghij1234567890"
 }
 ```
+
+Both arguments can instead be provided through the `YOUTRACK_URL` and
+`YOUTRACK_TOKEN` environment variables; values set in the connection config
+take precedence.
 
 Root and sub-path installations are supported; `/api` is appended exactly once. HTTPS is required except for explicit loopback E2E URLs.
 
