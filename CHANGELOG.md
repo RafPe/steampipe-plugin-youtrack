@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.1] - 2026-08-12
+
+### Changed
+
+- Renamed the repository from steampipe-youtrack to steampipe-plugin-youtrack to satisfy the Steampipe Hub naming convention; module path, install/documentation URLs, and workflow references were updated to match.
+
+[0.1.1]: https://github.com/RafPe/steampipe-plugin-youtrack/compare/v0.1.0...v0.1.1
+
+
 ## [0.1.0] - 2026-08-11
 
 ### Added
