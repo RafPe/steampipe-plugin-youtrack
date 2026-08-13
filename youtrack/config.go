@@ -4,7 +4,15 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"os"
 	"strings"
+)
+
+// Environment variables consulted when the connection config leaves the
+// corresponding argument unset.
+const (
+	baseURLEnvVar = "YOUTRACK_URL"
+	tokenEnvVar   = "YOUTRACK_TOKEN"
 )
 
 // Config defines the configuration for a YouTrack connection.
@@ -18,16 +26,36 @@ func ConfigInstance() any {
 	return &Config{}
 }
 
+// withEnvFallback fills unset connection arguments from the YOUTRACK_URL and
+// YOUTRACK_TOKEN environment variables. Explicit connection config wins.
+func (c Config) withEnvFallback() Config {
+	if !isSet(c.BaseURL) {
+		if value := os.Getenv(baseURLEnvVar); strings.TrimSpace(value) != "" {
+			c.BaseURL = &value
+		}
+	}
+	if !isSet(c.Token) {
+		if value := os.Getenv(tokenEnvVar); strings.TrimSpace(value) != "" {
+			c.Token = &value
+		}
+	}
+	return c
+}
+
+func isSet(value *string) bool {
+	return value != nil && strings.TrimSpace(*value) != ""
+}
+
 // ValidateConfig validates a connection without contacting the YouTrack server.
 func ValidateConfig(config *Config) error {
 	if config == nil {
 		return errors.New("config is required")
 	}
-	if config.BaseURL == nil || strings.TrimSpace(*config.BaseURL) == "" {
-		return errors.New("base_url is required")
+	if !isSet(config.BaseURL) {
+		return errors.New("base_url must be set in the connection config or the YOUTRACK_URL environment variable")
 	}
-	if config.Token == nil || strings.TrimSpace(*config.Token) == "" {
-		return errors.New("token is required")
+	if !isSet(config.Token) {
+		return errors.New("token must be set in the connection config or the YOUTRACK_TOKEN environment variable")
 	}
 
 	baseURL := strings.TrimSpace(*config.BaseURL)

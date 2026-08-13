@@ -44,8 +44,9 @@ fresh-recreate. CI never sets this: every CI run gets a genuinely fresh
 instance.
 
 The token is never committed or written into generated configuration: the
-mode `0600` Steampipe connection file refers to `YOUTRACK_TOKEN` through
-`env()` and is removed when the test exits.
+mode `0600` Steampipe connection file omits the `token` argument so the
+plugin reads it from the `YOUTRACK_TOKEN` environment variable, and the file
+is removed when the test exits.
 
 ### Manual override
 

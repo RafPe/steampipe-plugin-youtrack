@@ -30,15 +30,15 @@ func TestValidateConfig(t *testing.T) {
 		"localhost HTTP":         {baseURL: "http://localhost:8080/youtrack", token: "token"},
 		"loopback IPv4 HTTP":     {baseURL: "http://127.0.0.1:8080", token: "token"},
 		"loopback IPv6 HTTP":     {baseURL: "http://[::1]:8080", token: "token"},
-		"missing URL":            {token: "token", wantErr: "base_url is required"},
+		"missing URL":            {token: "token", wantErr: "base_url must be set"},
 		"relative URL":           {baseURL: "/youtrack", token: "token", wantErr: "absolute URL"},
 		"non-HTTPS remote URL":   {baseURL: "http://example.com", token: "token", wantErr: "HTTPS"},
 		"unsupported URL scheme": {baseURL: "ftp://example.com", token: "token", wantErr: "HTTPS"},
 		"URL query":              {baseURL: "https://example.com?x=1", token: "token", wantErr: "query"},
 		"URL fragment":           {baseURL: "https://example.com/#x", token: "token", wantErr: "fragment"},
 		"URL credentials":        {baseURL: "https://user@example.com", token: "token", wantErr: "credentials"},
-		"missing token":          {baseURL: "https://example.com", wantErr: "token is required"},
-		"blank token":            {baseURL: "https://example.com", token: "  ", wantErr: "token is required"},
+		"missing token":          {baseURL: "https://example.com", wantErr: "token must be set"},
+		"blank token":            {baseURL: "https://example.com", token: "  ", wantErr: "token must be set"},
 	}
 
 	for name, tt := range tests {
@@ -67,6 +67,50 @@ func TestValidateConfigDoesNotExposeInvalidBaseURL(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), privateValue) {
 		t.Errorf("ValidateConfig(invalid credential URL) error = %q, must not contain URL credentials", err)
+	}
+}
+
+func TestConfigEnvFallback(t *testing.T) {
+	t.Setenv("YOUTRACK_URL", "https://env.youtrack.cloud")
+	t.Setenv("YOUTRACK_TOKEN", "env-token")
+
+	resolved := Config{}.withEnvFallback()
+	if resolved.BaseURL == nil || *resolved.BaseURL != "https://env.youtrack.cloud" {
+		t.Errorf("withEnvFallback() BaseURL = %v, want YOUTRACK_URL value", resolved.BaseURL)
+	}
+	if resolved.Token == nil || *resolved.Token != "env-token" {
+		t.Errorf("withEnvFallback() Token = %v, want YOUTRACK_TOKEN value", resolved.Token)
+	}
+	if err := ValidateConfig(&resolved); err != nil {
+		t.Errorf("ValidateConfig(env fallback) error = %v, want nil", err)
+	}
+}
+
+func TestConfigEnvFallbackPrefersExplicitConfig(t *testing.T) {
+	t.Setenv("YOUTRACK_URL", "https://env.youtrack.cloud")
+	t.Setenv("YOUTRACK_TOKEN", "env-token")
+
+	baseURL := "https://explicit.example.com"
+	token := strings.Join([]string{"from", "config"}, "-")
+	resolved := Config{BaseURL: &baseURL, Token: &token}.withEnvFallback()
+	if resolved.BaseURL == nil || *resolved.BaseURL != baseURL {
+		t.Errorf("withEnvFallback() BaseURL = %v, want explicit config value %q", resolved.BaseURL, baseURL)
+	}
+	if resolved.Token == nil || *resolved.Token != token {
+		t.Errorf("withEnvFallback() Token = %v, want explicit config value %q", resolved.Token, token)
+	}
+}
+
+func TestConfigEnvFallbackIgnoresBlankEnvironment(t *testing.T) {
+	t.Setenv("YOUTRACK_URL", "  ")
+	t.Setenv("YOUTRACK_TOKEN", "")
+
+	resolved := Config{}.withEnvFallback()
+	if resolved.BaseURL != nil {
+		t.Errorf("withEnvFallback() BaseURL = %q, want nil for blank YOUTRACK_URL", *resolved.BaseURL)
+	}
+	if resolved.Token != nil {
+		t.Errorf("withEnvFallback() Token = %q, want nil for blank YOUTRACK_TOKEN", *resolved.Token)
 	}
 }
 
