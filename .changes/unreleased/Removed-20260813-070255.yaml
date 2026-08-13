@@ -1,0 +1,3 @@
+kind: Removed
+body: Removed the start_date, end_date, start, end, created_start, created_end, updated_start, and updated_end qualifier columns from youtrack_issue_work_item; use range conditions on date, created, and updated instead.
+time: 2026-08-13T07:02:55.173797+03:00

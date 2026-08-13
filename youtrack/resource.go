@@ -227,25 +227,9 @@ func resourcePath(definition resourceDefinition, d *plugin.QueryData) []string {
 }
 
 func addWorkItemQualifiers(query url.Values, d *plugin.QueryData) {
-	for column, parameter := range map[string]string{
-		"query": "query", "start_date": "startDate", "end_date": "endDate",
-	} {
-		if value := qualValue(d, column); value != nil {
-			if timestamp := value.GetTimestampValue(); timestamp != nil {
-				query.Set(parameter, timestamp.AsTime().UTC().Format(time.DateOnly))
-			} else if text := value.GetStringValue(); text != "" {
-				query.Set(parameter, text)
-			}
-		}
-	}
-	for column, parameter := range map[string]string{
-		"start": "start", "end": "end", "created_start": "createdStart",
-		"created_end": "createdEnd", "updated_start": "updatedStart", "updated_end": "updatedEnd",
-	} {
-		if value := qualValue(d, column); value != nil && value.GetTimestampValue() != nil {
-			query.Set(parameter, strconv.FormatInt(value.GetTimestampValue().AsTime().UnixMilli(), 10))
-		}
-	}
+	addTimestampRangeQualifiers(query, d, "date", "start", "end")
+	addTimestampRangeQualifiers(query, d, "created", "createdStart", "createdEnd")
+	addTimestampRangeQualifiers(query, d, "updated", "updatedStart", "updatedEnd")
 	for column, parameter := range map[string]string{"author_filter": "author", "creator_filter": "creator"} {
 		value := qualValue(d, column)
 		if value == nil {
@@ -259,6 +243,37 @@ func addWorkItemQualifiers(query url.Values, d *plugin.QueryData) {
 			}
 		} else if text := value.GetStringValue(); text != "" {
 			query.Add(parameter, text)
+		}
+	}
+}
+
+// addTimestampRangeQualifiers pushes range qualifiers on a timestamp column
+// to the global work-item API's inclusive Unix-millisecond bound parameters.
+// Strict operators are narrowed by one millisecond; Postgres re-applies the
+// original qualifiers to the returned rows.
+func addTimestampRangeQualifiers(query url.Values, d *plugin.QueryData, column, startParameter, endParameter string) {
+	keyQuals, ok := d.Quals[column]
+	if !ok || keyQuals == nil {
+		return
+	}
+	for _, qual := range keyQuals.Quals {
+		timestamp := qual.Value.GetTimestampValue()
+		if timestamp == nil {
+			continue
+		}
+		ms := timestamp.AsTime().UnixMilli()
+		switch qual.Operator {
+		case ">":
+			query.Set(startParameter, strconv.FormatInt(ms+1, 10))
+		case ">=":
+			query.Set(startParameter, strconv.FormatInt(ms, 10))
+		case "=":
+			query.Set(startParameter, strconv.FormatInt(ms, 10))
+			query.Set(endParameter, strconv.FormatInt(ms, 10))
+		case "<":
+			query.Set(endParameter, strconv.FormatInt(ms-1, 10))
+		case "<=":
+			query.Set(endParameter, strconv.FormatInt(ms, 10))
 		}
 	}
 }

@@ -81,10 +81,6 @@ func TestPublicSchema(t *testing.T) {
 			"issue": proto.ColumnType_JSON, "duration": proto.ColumnType_JSON,
 			"date": proto.ColumnType_TIMESTAMP, "created": proto.ColumnType_TIMESTAMP,
 			"updated": proto.ColumnType_TIMESTAMP, "query": proto.ColumnType_STRING,
-			"start_date": proto.ColumnType_TIMESTAMP, "end_date": proto.ColumnType_TIMESTAMP,
-			"start": proto.ColumnType_TIMESTAMP, "end": proto.ColumnType_TIMESTAMP,
-			"created_start": proto.ColumnType_TIMESTAMP, "created_end": proto.ColumnType_TIMESTAMP,
-			"updated_start": proto.ColumnType_TIMESTAMP, "updated_end": proto.ColumnType_TIMESTAMP,
 			"author_filter": proto.ColumnType_STRING, "creator_filter": proto.ColumnType_STRING,
 		},
 	}

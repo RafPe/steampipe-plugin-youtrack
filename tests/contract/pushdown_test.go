@@ -26,8 +26,7 @@ func TestPushdownKeyColumns(t *testing.T) {
 		"youtrack_tag":           {"query"},
 		"youtrack_issue_comment": {"issue_id"},
 		"youtrack_issue_work_item": {
-			"issue_id", "query", "start_date", "end_date", "start", "end",
-			"created_start", "created_end", "updated_start", "updated_end", "author_filter", "creator_filter",
+			"issue_id", "query", "author_filter", "creator_filter", "date", "created", "updated",
 		},
 	}
 	wantGet := map[string][]string{
