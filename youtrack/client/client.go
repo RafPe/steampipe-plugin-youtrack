@@ -251,9 +251,12 @@ func (c *Client) Get(ctx context.Context, path []string, query url.Values, field
 	return nil
 }
 
-// List fetches pages into a pointer to a slice. A positive limit bounds the
-// total result count; zero retrieves pages until YouTrack returns an empty page.
-func (c *Client) List(ctx context.Context, path []string, query url.Values, fields []string, limit int, dst any) error {
+// ListPages fetches pages sequentially and passes each non-empty page to
+// onPage as a pointer to a slice of the same type as dst; dst itself is never
+// written. onPage returns whether to continue with the next page. A positive
+// limit bounds the total result count; zero retrieves pages until YouTrack
+// returns an empty page.
+func (c *Client) ListPages(ctx context.Context, path []string, query url.Values, fields []string, limit int, dst any, onPage func(page any) (bool, error)) error {
 	if limit < 0 {
 		return errors.New("list limit must not be negative")
 	}
@@ -261,7 +264,7 @@ func (c *Client) List(ctx context.Context, path []string, query url.Values, fiel
 	if dstValue.Kind() != reflect.Pointer || dstValue.IsNil() || dstValue.Elem().Kind() != reflect.Slice {
 		return errors.New("list destination must be a non-nil pointer to a slice")
 	}
-	result := dstValue.Elem()
+	sliceType := dstValue.Elem().Type()
 	for skip := 0; limit == 0 || skip < limit; {
 		top := c.pageSize
 		if limit > 0 && limit-skip < top {
@@ -270,18 +273,38 @@ func (c *Client) List(ctx context.Context, path []string, query url.Values, fiel
 		pageQuery := cloneValues(query)
 		pageQuery.Set("$skip", strconv.Itoa(skip))
 		pageQuery.Set("$top", strconv.Itoa(top))
-		page := reflect.New(result.Type())
+		page := reflect.New(sliceType)
 		if err := c.Get(ctx, path, pageQuery, fields, page.Interface()); err != nil {
 			return err
 		}
 		items := page.Elem()
-		result.Set(reflect.AppendSlice(result, items))
-		skip += items.Len()
 		if items.Len() == 0 {
-			break
+			return nil
 		}
+		keepGoing, err := onPage(page.Interface())
+		if err != nil {
+			return err
+		}
+		if !keepGoing {
+			return nil
+		}
+		skip += items.Len()
 	}
 	return nil
+}
+
+// List fetches pages into a pointer to a slice. A positive limit bounds the
+// total result count; zero retrieves pages until YouTrack returns an empty page.
+func (c *Client) List(ctx context.Context, path []string, query url.Values, fields []string, limit int, dst any) error {
+	dstValue := reflect.ValueOf(dst)
+	if dstValue.Kind() != reflect.Pointer || dstValue.IsNil() || dstValue.Elem().Kind() != reflect.Slice {
+		return errors.New("list destination must be a non-nil pointer to a slice")
+	}
+	result := dstValue.Elem()
+	return c.ListPages(ctx, path, query, fields, limit, dst, func(page any) (bool, error) {
+		result.Set(reflect.AppendSlice(result, reflect.ValueOf(page).Elem()))
+		return true, nil
+	})
 }
 
 func (c *Client) requestURL(path []string, query url.Values, fields []string) string {

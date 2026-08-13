@@ -345,6 +345,28 @@ func TestResourceUtilities(t *testing.T) {
 	}
 }
 
+func TestResourceListStopsPagingWhenCancelled(t *testing.T) {
+	t.Parallel()
+
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":"2-1"},{"id":"2-2"}]`))
+	}))
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	d := queryData(t, server.URL)
+	d.StreamListItem = func(context.Context, ...any) { cancel() }
+	if _, err := resourceList(resourceDefinitions()[0])(ctx, d, nil); err != nil {
+		t.Fatalf("resourceList(cancelled) error = %v, want nil", err)
+	}
+	if requests != 1 {
+		t.Errorf("resourceList(cancelled after first row) requests = %d, want 1", requests)
+	}
+}
+
 func TestQueryClientIsCachedPerConnection(t *testing.T) {
 	t.Parallel()
 

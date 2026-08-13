@@ -155,13 +155,20 @@ func resourceList(definition resourceDefinition) plugin.HydrateFunc {
 		if path == nil {
 			return nil, nil
 		}
-		var rows []resource
-		if err := apiClient.List(ctx, path, query, definition.fields, limit, &rows); err != nil {
+		var pageTemplate []resource
+		err = apiClient.ListPages(ctx, path, query, definition.fields, limit, &pageTemplate, func(page any) (bool, error) {
+			rows := *page.(*[]resource)
+			for i := range rows {
+				if plugin.IsCancelled(ctx) {
+					return false, nil
+				}
+				d.StreamListItem(ctx, rows[i])
+			}
+			return true, nil
+		})
+		if err != nil {
 			logger(ctx).Error(definition.name+".list", "api_error", err)
 			return nil, fmt.Errorf("list %s: %w", definition.name, err)
-		}
-		for i := range rows {
-			d.StreamListItem(ctx, rows[i])
 		}
 		return nil, nil
 	}
