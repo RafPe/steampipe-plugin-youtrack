@@ -1,0 +1,3 @@
+kind: Fixed
+body: Reference the plugin as rafpe/youtrack so Steampipe resolves it from the community org instead of hub.steampipe.io/plugins/turbot/youtrack.
+time: 2026-08-13T07:02:30.939774+03:00

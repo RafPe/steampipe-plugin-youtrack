@@ -1,5 +1,5 @@
 connection "youtrack" {
-  plugin = "youtrack"
+  plugin = "rafpe/youtrack"
 
   # Base URL of your YouTrack instance, without a trailing slash, e.g.
   # "https://example.youtrack.cloud" or "https://example.com/youtrack".
