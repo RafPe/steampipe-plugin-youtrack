@@ -258,10 +258,10 @@ func TestListPaginatesAndHonorsLimit(t *testing.T) {
 	}
 }
 
-func TestListUsesConservativeDefaultPageSizeForRichResources(t *testing.T) {
+func TestListUsesDefaultPageSize(t *testing.T) {
 	t.Parallel()
 
-	const safePageSize = 25
+	const wantPageSize = 100
 	var gotTop string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotTop = r.URL.Query().Get("$top")
@@ -278,8 +278,8 @@ func TestListUsesConservativeDefaultPageSizeForRichResources(t *testing.T) {
 	if err := c.List(context.Background(), []string{"issues"}, nil, []string{"id", "description", "comments(text)"}, 0, &got); err != nil {
 		t.Fatalf("List() error = %v, want nil", err)
 	}
-	if gotTop != strconv.Itoa(safePageSize) {
-		t.Errorf("List() default $top = %q, want %d", gotTop, safePageSize)
+	if gotTop != strconv.Itoa(wantPageSize) {
+		t.Errorf("List() default $top = %q, want %d", gotTop, wantPageSize)
 	}
 }
 

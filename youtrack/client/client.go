@@ -16,12 +16,17 @@ import (
 )
 
 const (
-	defaultPageSize      = 25
+	// defaultPageSize is the $top requested per list page. YouTrack applies a
+	// server-side default of 42 only when $top is omitted; an explicit $top may
+	// be larger. List reduces the page size to the query limit when smaller.
+	defaultPageSize      = 100
 	defaultMaxBodyBytes  = 4 << 20
 	defaultMaxAttempts   = 3
 	defaultRetryDelay    = 100 * time.Millisecond
 	defaultMaxRetryDelay = 30 * time.Second
-	maxPageSize          = 42
+	// maxPageSize is a client-side sanity bound for WithPageSize, sized to keep
+	// one page comfortably within the response body limit.
+	maxPageSize = 1000
 )
 
 // ErrResponseTooLarge indicates that a response exceeded the configured body limit.
