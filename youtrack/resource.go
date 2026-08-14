@@ -10,10 +10,21 @@ import (
 	"time"
 
 	"github.com/RafPe/steampipe-plugin-youtrack/youtrack/client"
+	"github.com/hashicorp/go-hclog"
 	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin"
+	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/context_key"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/transform"
 )
+
+// logger returns the SDK logger from the context, or a no-op logger when the
+// context carries none (as in unit tests).
+func logger(ctx context.Context) hclog.Logger {
+	if contextLogger, ok := ctx.Value(context_key.Logger).(hclog.Logger); ok {
+		return contextLogger
+	}
+	return hclog.NewNullLogger()
+}
 
 type resource struct {
 	ID                    string          `json:"id"`
@@ -126,6 +137,7 @@ func resourceList(definition resourceDefinition) plugin.HydrateFunc {
 	return func(ctx context.Context, d *plugin.QueryData, _ *plugin.HydrateData) (any, error) {
 		apiClient, err := queryClient(ctx, d)
 		if err != nil {
+			logger(ctx).Error(definition.name+".list", "connection_error", err)
 			return nil, err
 		}
 		query := make(url.Values)
@@ -145,6 +157,7 @@ func resourceList(definition resourceDefinition) plugin.HydrateFunc {
 		}
 		var rows []resource
 		if err := apiClient.List(ctx, path, query, definition.fields, limit, &rows); err != nil {
+			logger(ctx).Error(definition.name+".list", "api_error", err)
 			return nil, fmt.Errorf("list %s: %w", definition.name, err)
 		}
 		for i := range rows {
@@ -162,6 +175,7 @@ func resourceGet(definition resourceDefinition) plugin.HydrateFunc {
 		}
 		apiClient, err := queryClient(ctx, d)
 		if err != nil {
+			logger(ctx).Error(definition.name+".get", "connection_error", err)
 			return nil, err
 		}
 		path := resourcePath(definition, d)
@@ -175,6 +189,7 @@ func resourceGet(definition resourceDefinition) plugin.HydrateFunc {
 			if errors.As(err, &httpErr) && httpErr.Kind == client.ErrorNotFound {
 				return nil, nil
 			}
+			logger(ctx).Error(definition.name+".get", "api_error", err)
 			return nil, fmt.Errorf("get %s: %w", definition.name, err)
 		}
 		return row, nil

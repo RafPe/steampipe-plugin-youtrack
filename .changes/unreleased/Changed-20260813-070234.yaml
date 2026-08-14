@@ -1,0 +1,3 @@
+kind: Changed
+body: Hydrate functions now log connection and API errors through the plugin logger to aid debugging.
+time: 2026-08-13T07:02:34.578575+03:00

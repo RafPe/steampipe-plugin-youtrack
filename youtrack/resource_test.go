@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/turbot/steampipe-plugin-sdk/v6/connection"
 	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin"
+	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/context_key"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/transform"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -306,6 +308,19 @@ func TestResourceListAndClientErrors(t *testing.T) {
 	d = queryData(t, "http://127.0.0.1:1")
 	if got, err := resourceList(resourceDefinitions()[8])(context.Background(), d, nil); err != nil || got != nil {
 		t.Errorf("resourceList(comment without parent) = %#v, %v, want nil, nil", got, err)
+	}
+}
+
+func TestLoggerUsesContextLogger(t *testing.T) {
+	t.Parallel()
+
+	contextLogger := hclog.NewNullLogger()
+	ctx := context.WithValue(context.Background(), context_key.Logger, contextLogger)
+	if got := logger(ctx); got != contextLogger {
+		t.Errorf("logger(context with logger) = %v, want the context logger", got)
+	}
+	if got := logger(context.Background()); got == nil {
+		t.Error("logger(bare context) = nil, want a no-op logger")
 	}
 }
 
