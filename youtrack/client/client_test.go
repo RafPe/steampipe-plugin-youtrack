@@ -258,6 +258,89 @@ func TestListPaginatesAndHonorsLimit(t *testing.T) {
 	}
 }
 
+func TestListPagesStreamsEachPageAndStopsEarly(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("$skip") {
+		case "0":
+			_, _ = io.WriteString(w, `[{"id":"1"},{"id":"2"}]`)
+		default:
+			_, _ = io.WriteString(w, `[{"id":"3"},{"id":"4"}]`)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(server.URL, "token", WithPageSize(2))
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	type item struct {
+		ID string `json:"id"`
+	}
+	var pages [][]item
+	var template []item
+	err = c.ListPages(context.Background(), []string{"issues"}, nil, []string{"id"}, 0, &template, func(page any) (bool, error) {
+		pages = append(pages, *page.(*[]item))
+		return len(pages) < 2, nil
+	})
+	if err != nil {
+		t.Fatalf("ListPages() error = %v, want nil", err)
+	}
+	want := [][]item{{{"1"}, {"2"}}, {{"3"}, {"4"}}}
+	if !reflect.DeepEqual(pages, want) {
+		t.Errorf("ListPages() pages = %#v, want %#v", pages, want)
+	}
+	if template != nil {
+		t.Errorf("ListPages() wrote %#v into the destination template, want it untouched", template)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Errorf("ListPages(stop after two pages) requests = %d, want 2", got)
+	}
+}
+
+func TestListPagesValidatesArguments(t *testing.T) {
+	t.Parallel()
+
+	c, err := New("https://example.test", "token")
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	onPage := func(any) (bool, error) { return true, nil }
+	if err := c.ListPages(context.Background(), []string{"issues"}, nil, nil, -1, &[]map[string]any{}, onPage); err == nil {
+		t.Error("ListPages(negative limit) error = nil, want error")
+	}
+	if err := c.ListPages(context.Background(), []string{"issues"}, nil, nil, 0, "not a slice pointer", onPage); err == nil {
+		t.Error("ListPages(invalid destination) error = nil, want error")
+	}
+}
+
+func TestListPagesPropagatesCallbackError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `[{"id":"1"}]`)
+	}))
+	t.Cleanup(server.Close)
+	c, err := New(server.URL, "token")
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+
+	wantErr := errors.New("stream failed")
+	var template []map[string]any
+	err = c.ListPages(context.Background(), []string{"issues"}, nil, []string{"id"}, 0, &template, func(any) (bool, error) {
+		return false, wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Errorf("ListPages(failing callback) error = %v, want %v", err, wantErr)
+	}
+}
+
 func TestListUsesDefaultPageSize(t *testing.T) {
 	t.Parallel()
 
