@@ -4,8 +4,15 @@ GOSEC_VERSION := v2.22.8
 GOVULNCHECK_VERSION := v1.6.0
 GORELEASER_VERSION := v2.17.1
 
-.PHONY: build test test-race test-contract test-integration coverage fmt lint e2e vet docs security check \
+STEAMPIPE_INSTALL_DIR ?= $(HOME)/.steampipe
+PLUGIN_INSTALL_PATH := $(STEAMPIPE_INSTALL_DIR)/plugins/hub.steampipe.io/plugins/rafpe/youtrack@latest
+
+.PHONY: install build test test-race test-contract test-integration coverage fmt lint e2e vet docs security check \
 	release-validate changelog-check release-check release-snapshot release-dry-run release-contract-check
+
+install:
+	mkdir -p $(PLUGIN_INSTALL_PATH)
+	$(GO) build -o $(PLUGIN_INSTALL_PATH)/steampipe-plugin-youtrack.plugin .
 
 build:
 	$(GO) build ./...

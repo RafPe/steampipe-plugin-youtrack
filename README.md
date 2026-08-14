@@ -13,13 +13,13 @@ Query JetBrains YouTrack through PostgreSQL-compatible SQL. The plugin is read-o
 
 ## Prerequisites and installation
 
-Install Go 1.26 and Steampipe, then build the plugin with `make build`. For local development, install the binary at `~/.steampipe/plugins/local/youtrack/youtrack.plugin`; Steampipe requires the plugin-specific directory beneath `plugins/local`.
+Install Go 1.26 and Steampipe, then build and install the plugin into your local Steampipe plugin directory:
 
 ```sh
-mkdir -p ~/.steampipe/plugins/local/youtrack
-go build -o ~/.steampipe/plugins/local/youtrack/youtrack.plugin .
-chmod 700 ~/.steampipe/plugins/local/youtrack/youtrack.plugin
+make install
 ```
+
+This builds the plugin binary to `~/.steampipe/plugins/hub.steampipe.io/plugins/rafpe/youtrack@latest/steampipe-plugin-youtrack.plugin`, where Steampipe picks it up as `rafpe/youtrack`.
 
 Create a permanent token in your YouTrack profile. Treat it as a password: store it in an environment variable, never commit it, and rotate it if exposed.
 
