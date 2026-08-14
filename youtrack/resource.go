@@ -124,7 +124,7 @@ func resourceTable(_ context.Context, definition resourceDefinition) *plugin.Tab
 
 func resourceList(definition resourceDefinition) plugin.HydrateFunc {
 	return func(ctx context.Context, d *plugin.QueryData, _ *plugin.HydrateData) (any, error) {
-		apiClient, err := queryClient(d)
+		apiClient, err := queryClient(ctx, d)
 		if err != nil {
 			return nil, err
 		}
@@ -160,7 +160,7 @@ func resourceGet(definition resourceDefinition) plugin.HydrateFunc {
 		if id == "" {
 			return nil, nil
 		}
-		apiClient, err := queryClient(d)
+		apiClient, err := queryClient(ctx, d)
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +268,16 @@ func getIdentifier(definition resourceDefinition, d *plugin.QueryData) string {
 	return ""
 }
 
-func queryClient(d *plugin.QueryData) (*client.Client, error) {
+const clientCacheKey = "youtrack-client"
+
+func queryClient(ctx context.Context, d *plugin.QueryData) (*client.Client, error) {
+	if d.ConnectionCache != nil {
+		if cached, ok := d.ConnectionCache.Get(ctx, clientCacheKey); ok {
+			if apiClient, ok := cached.(*client.Client); ok {
+				return apiClient, nil
+			}
+		}
+	}
 	config, ok := d.Connection.GetConfig().(Config)
 	if !ok {
 		return nil, errors.New("invalid YouTrack connection configuration")
@@ -277,7 +286,13 @@ func queryClient(d *plugin.QueryData) (*client.Client, error) {
 	if err := ValidateConfig(&config); err != nil {
 		return nil, fmt.Errorf("validate YouTrack connection: %w", err)
 	}
-	return client.New(*config.BaseURL, *config.Token)
+	apiClient, err := client.New(*config.BaseURL, *config.Token)
+	if err == nil && d.ConnectionCache != nil {
+		// Best-effort: a failed cache write only means the next hydrate call
+		// rebuilds the client.
+		_ = d.ConnectionCache.Set(ctx, clientCacheKey, apiClient)
+	}
+	return apiClient, err
 }
 
 func commonColumns() []*plugin.Column {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/turbot/steampipe-plugin-sdk/v6/connection"
 	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/transform"
@@ -326,6 +327,38 @@ func TestResourceUtilities(t *testing.T) {
 	var value *int64
 	if got, err := milliseconds(context.Background(), &transform.TransformData{Value: value}); err != nil || got != nil {
 		t.Errorf("milliseconds(nil pointer) = %v, %v, want nil, nil", got, err)
+	}
+}
+
+func TestQueryClientIsCachedPerConnection(t *testing.T) {
+	t.Parallel()
+
+	cache, err := connection.NewConnectionCache("youtrack-test", 1024*1024)
+	if err != nil {
+		t.Fatalf("connection.NewConnectionCache() error = %v, want nil", err)
+	}
+	d := queryData(t, "https://example.youtrack.cloud")
+	d.ConnectionCache = cache
+
+	first, err := queryClient(context.Background(), d)
+	if err != nil {
+		t.Fatalf("queryClient() error = %v, want nil", err)
+	}
+	second, err := queryClient(context.Background(), d)
+	if err != nil {
+		t.Fatalf("queryClient() second call error = %v, want nil", err)
+	}
+	if first != second {
+		t.Error("queryClient() built a new client on the second call, want the cached client")
+	}
+}
+
+func TestQueryClientWorksWithoutConnectionCache(t *testing.T) {
+	t.Parallel()
+
+	d := queryData(t, "https://example.youtrack.cloud")
+	if _, err := queryClient(context.Background(), d); err != nil {
+		t.Errorf("queryClient(no cache) error = %v, want nil", err)
 	}
 }
 
