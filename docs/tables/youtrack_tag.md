@@ -1,38 +1,109 @@
-# youtrack_tag
+---
+title: "Steampipe Table: youtrack_tag - Query YouTrack Tags using SQL"
+description: "Allows users to query YouTrack Tags, providing tag names, owners, and the independent sharing settings that control who can see, apply, and update each tag."
+folder: "Tag"
+---
 
-Returns tags visible to the permanent-token user, including their separate visibility, use, and update sharing settings.
+# Table: youtrack_tag - Query YouTrack Tags using SQL
 
-## Columns
+YouTrack tags are user-owned labels that can be attached to issues and articles. Each tag carries three independent sharing configurations that decide who may see the tag, who may apply it, and who may change it, so a tag that is widely visible is not necessarily widely usable.
 
-| Column | Type | Nullable behavior | Description |
-| --- | --- | --- | --- |
-| `id` | text | Normally non-null. | Tag database ID. |
-| `raw` | jsonb | Normally non-null. | Complete requested YouTrack representation. |
-| `name` | text | Empty if omitted by YouTrack. | Tag name. |
-| `owner` | jsonb | Null when unset or not visible. | Tag owner object. |
-| `untag_on_resolve` | boolean | Null when not visible. | Whether YouTrack removes the tag when an issue is resolved. |
-| `read_sharing_settings` | jsonb | Null when unavailable. | Settings controlling tag visibility. |
-| `tag_sharing_settings` | jsonb | Null when unavailable. | Settings controlling who may use the tag. |
-| `update_sharing_settings` | jsonb | Null when unavailable. | Settings controlling who may update the tag. |
-| `query` | text | Null unless supplied as a qualifier. | Control column containing the exact tag-name search sent to YouTrack. |
+The `youtrack_tag` table returns the tags visible to the permanent-token user, along with the owner object, the untag-on-resolve behavior, and all three sharing settings as JSONB so no access-control detail is lost.
 
-## Querying
+## Table Usage Guide
 
-Exact `id` equality uses the single-tag endpoint; only database IDs are accepted. Exact `query` is passed verbatim to YouTrack's tag-name search. `name =` remains a local predicate because the API search is not documented as exact equality.
+The `youtrack_tag` table provides insights into the tag vocabulary of a YouTrack instance and how that vocabulary is shared. As an administrator or workflow owner, use this table to audit which tags exist, who owns them, whether they are shared beyond their owner, and which tags automatically detach when an issue is resolved.
 
-```sql
-select id, name, owner, untag_on_resolve
-from youtrack_tag
-where query = 'release'
-order by name;
+**Important Notes**
+- Exact `id` equality uses the single-tag endpoint and accepts only database IDs, such as `6-42`.
+- The `query` control column is passed verbatim to YouTrack's tag-name search. It is a tag-name search, not the issue-search syntax used elsewhere in this plugin.
+- A predicate on `name` remains a local filter, because the YouTrack tag search is not documented as exact equality. Use `query` when you want the API to do the matching.
+- `read_sharing_settings`, `tag_sharing_settings`, and `update_sharing_settings` are independent: visibility, use, and update access are granted separately.
+- Results contain only tags visible to the current user. A specific tag is visible to its owner or to users covered by its sharing configuration.
+
+## Examples
+
+### Find tags by name
+Use the `query` control column to let YouTrack perform the tag-name search rather than filtering locally.
+
+```sql+postgres
+select
+  id,
+  name,
+  owner,
+  untag_on_resolve
+from
+  youtrack_tag
+where
+  query = 'release'
+order by
+  name;
 ```
 
-```sql
-select name, read_sharing_settings, tag_sharing_settings
-from youtrack_tag
-where id = '6-42';
+```sql+sqlite
+select
+  id,
+  name,
+  owner,
+  untag_on_resolve
+from
+  youtrack_tag
+where
+  query = 'release'
+order by
+  name;
 ```
 
-## Permissions
+### Get the sharing configuration of a specific tag
+Retrieve a single tag by its database ID to review who may see and apply it.
 
-Lists contain tags visible to the current user. A specific tag is visible to its owner or users covered by its sharing configuration; visibility, use, and update access are independent.
+```sql+postgres
+select
+  name,
+  read_sharing_settings,
+  tag_sharing_settings
+from
+  youtrack_tag
+where
+  id = '6-42';
+```
+
+```sql+sqlite
+select
+  name,
+  read_sharing_settings,
+  tag_sharing_settings
+from
+  youtrack_tag
+where
+  id = '6-42';
+```
+
+### List tags that are removed when an issue is resolved
+Surface tags with automatic untagging behavior, since they silently disappear from issues as work completes.
+
+```sql+postgres
+select
+  id,
+  name,
+  owner ->> 'login' as owner_login
+from
+  youtrack_tag
+where
+  untag_on_resolve
+order by
+  name;
+```
+
+```sql+sqlite
+select
+  id,
+  name,
+  json_extract(owner, '$.login') as owner_login
+from
+  youtrack_tag
+where
+  untag_on_resolve
+order by
+  name;
+```

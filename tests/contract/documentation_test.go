@@ -9,17 +9,18 @@ import (
 	"testing"
 
 	"github.com/RafPe/steampipe-plugin-youtrack/youtrack"
-	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 )
 
-func TestTableDocumentationMatchesPublicSchema(t *testing.T) {
+// TestTableDocumentationFollowsHubFormat verifies that every table ships a
+// doc in the standard Steampipe Hub table-doc format: frontmatter naming the
+// table, a matching title heading, a usage guide, and paired
+// sql+postgres/sql+sqlite examples.
+func TestTableDocumentationFollowsHubFormat(t *testing.T) {
 	t.Parallel()
 
 	tables := youtrack.Plugin(context.Background()).TableMap
 	documents := os.DirFS("../../docs/tables")
-	for tableName, table := range tables {
-		tableName := tableName
-		table := table
+	for tableName := range tables {
 		t.Run(tableName, func(t *testing.T) {
 			t.Parallel()
 
@@ -29,37 +30,31 @@ func TestTableDocumentationMatchesPublicSchema(t *testing.T) {
 				t.Fatalf("fs.ReadFile(docs, %q) error = %v, want nil", path, err)
 			}
 			document := string(data)
-			for _, column := range table.Columns {
-				want := fmt.Sprintf("| `%s` | %s |", column.Name, documentedType(column.Type))
+
+			if !strings.HasPrefix(document, "---\n") {
+				t.Errorf("documentation for %s starts with YAML frontmatter = false, want true", tableName)
+			}
+			for _, want := range []string{
+				fmt.Sprintf("title: \"Steampipe Table: %s - ", tableName),
+				"description: \"",
+				"folder: \"",
+				fmt.Sprintf("# Table: %s - ", tableName),
+				"## Table Usage Guide",
+				"## Examples",
+			} {
 				if !strings.Contains(document, want) {
-					t.Errorf("documentation for %s column %q does not contain %q", tableName, column.Name, want)
+					t.Errorf("documentation for %s contains %q = false, want true", tableName, want)
 				}
 			}
-			if got := strings.Count(document, "```sql"); got < 2 {
-				t.Errorf("documentation for %s SQL example count = %d, want at least 2", tableName, got)
+
+			postgres := strings.Count(document, "```sql+postgres")
+			sqlite := strings.Count(document, "```sql+sqlite")
+			if postgres < 2 {
+				t.Errorf("documentation for %s sql+postgres example count = %d, want at least 2", tableName, postgres)
 			}
-			for _, heading := range []string{"## Columns", "## Querying", "## Permissions"} {
-				if !strings.Contains(document, heading) {
-					t.Errorf("documentation for %s contains heading %q = false, want true", tableName, heading)
-				}
+			if postgres != sqlite {
+				t.Errorf("documentation for %s sql+sqlite example count = %d, want %d (one per sql+postgres example)", tableName, sqlite, postgres)
 			}
 		})
-	}
-}
-
-func documentedType(columnType proto.ColumnType) string {
-	switch columnType {
-	case proto.ColumnType_STRING:
-		return "text"
-	case proto.ColumnType_INT:
-		return "bigint"
-	case proto.ColumnType_BOOL:
-		return "boolean"
-	case proto.ColumnType_TIMESTAMP:
-		return "timestamp with time zone"
-	case proto.ColumnType_JSON:
-		return "jsonb"
-	default:
-		return "unknown"
 	}
 }
