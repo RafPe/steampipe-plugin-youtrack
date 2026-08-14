@@ -2,26 +2,29 @@
   <img src="./assets/social-card.png" alt="steampipe-youtrack — Query JetBrains YouTrack with SQL" width="820">
 </p>
 
-# Steampipe Plugin for YouTrack
+# YouTrack Plugin for Steampipe
 
-Query JetBrains YouTrack through PostgreSQL-compatible SQL. The plugin is read-only and supports Steampipe and Turbot Pipes.
+Use SQL to query issues, projects, users, work items, and more from JetBrains YouTrack.
+
+- **[Get started →](https://hub.steampipe.io/plugins/rafpe/youtrack)**
+- Documentation: [Table definitions & examples](https://hub.steampipe.io/plugins/rafpe/youtrack/tables)
+- Community: [Steampipe Slack Channel](https://turbot.com/community/join)
+- Get involved: [Issues](https://github.com/RafPe/steampipe-plugin-youtrack/issues)
 
 > [!IMPORTANT]
 > This is a community-maintained plugin. It is not an official JetBrains
 > product and is not affiliated with, endorsed by, or supported by JetBrains.
 > YouTrack and JetBrains are trademarks of JetBrains s.r.o.
 
-## Prerequisites and installation
+## Quick start
 
-Install Go 1.26 and Steampipe, then build and install the plugin into your local Steampipe plugin directory:
+Install the plugin with [Steampipe](https://steampipe.io):
 
 ```sh
-make install
+steampipe plugin install rafpe/youtrack
 ```
 
-This builds the plugin binary to `~/.steampipe/plugins/hub.steampipe.io/plugins/rafpe/youtrack@latest/steampipe-plugin-youtrack.plugin`, where Steampipe picks it up as `rafpe/youtrack`.
-
-Create a permanent token in your YouTrack profile. Treat it as a password: store it in an environment variable, never commit it, and rotate it if exposed.
+Configure your connection in `~/.steampipe/config/youtrack.spc`:
 
 ```hcl
 connection "youtrack" {
@@ -31,9 +34,30 @@ connection "youtrack" {
 }
 ```
 
-Both arguments can instead be provided through the `YOUTRACK_URL` and
-`YOUTRACK_TOKEN` environment variables; values set in the connection config
-take precedence.
+Create a permanent token in your YouTrack profile. Treat it as a password: store it in an environment variable, never commit it, and rotate it if exposed. Both arguments can instead be provided through the `YOUTRACK_URL` and `YOUTRACK_TOKEN` environment variables; values set in the connection config take precedence.
+
+Run steampipe:
+
+```sh
+steampipe query
+```
+
+Query unresolved issues in a project:
+
+```sql
+select id_readable, summary, created
+from youtrack_issue
+where query = 'project: DEMO #Unresolved';
+```
+
+```
++-------------+----------------------------+---------------------------+
+| id_readable | summary                    | created                   |
++-------------+----------------------------+---------------------------+
+| DEMO-42     | Fix login redirect loop    | 2026-08-01T09:15:23+02:00 |
+| DEMO-40     | Add SSO documentation      | 2026-07-28T14:02:11+02:00 |
++-------------+----------------------------+---------------------------+
+```
 
 Root and sub-path installations are supported; `/api` is appended exactly once. HTTPS is required except for explicit loopback E2E URLs.
 
@@ -41,23 +65,43 @@ Root and sub-path installations are supported; `/api` is appended exactly once. 
 
 `youtrack_project`, `youtrack_issue`, `youtrack_user`, `youtrack_group`, `youtrack_tag`, `youtrack_saved_query`, `youtrack_article`, `youtrack_agile`, `youtrack_issue_comment`, and `youtrack_issue_work_item`.
 
-```sql
-select id_readable, summary, created
-from youtrack_issue
-where query = 'project: DEMO #Unresolved';
-
-select p.short_name, count(*)
-from youtrack_project p
-join youtrack_issue i on i.project_id = p.id
-group by p.short_name;
-```
-
 Explore the [query cookbook](docs/queries.md) for reporting, JSON extraction,
 aggregations, identifier lookups, and multi-table joins.
 
-## Development
+## Developing
 
-Use `make test`, `make test-race`, `make test-contract`, `make test-integration`, `make coverage`, `make lint`, `make build`, or the complete local CI equivalent `make check`. The integration suite crosses the SDK hydration and real HTTP transport boundaries; the coverage gate requires 100% statement coverage in first-party testable packages. See [E2E testing](docs/e2e.md) for the pinned real YouTrack and Steampipe flow.
+Prerequisites:
+
+- [Steampipe](https://steampipe.io/downloads)
+- [Golang](https://golang.org/doc/install) 1.26 or newer
+
+Clone:
+
+```sh
+git clone https://github.com/RafPe/steampipe-plugin-youtrack.git
+cd steampipe-plugin-youtrack
+```
+
+Build and install the plugin into your local Steampipe plugin directory (`~/.steampipe/plugins/hub.steampipe.io/plugins/rafpe/youtrack@latest/steampipe-plugin-youtrack.plugin`):
+
+```sh
+make install
+```
+
+Configure the plugin:
+
+```sh
+cp config/youtrack.spc ~/.steampipe/config/youtrack.spc
+vi ~/.steampipe/config/youtrack.spc
+```
+
+Try it:
+
+```sh
+steampipe query "select id, name from youtrack_project"
+```
+
+Further development targets: `make test`, `make test-race`, `make test-contract`, `make test-integration`, `make coverage`, `make lint`, `make build`, or the complete local CI equivalent `make check`. The integration suite crosses the SDK hydration and real HTTP transport boundaries; the coverage gate requires 100% statement coverage in first-party testable packages. See [E2E testing](docs/e2e.md) for the pinned real YouTrack and Steampipe flow.
 
 ## Releases
 
