@@ -17,7 +17,7 @@ func resourceDefinitions() []resourceDefinition {
 		{name: "youtrack_article", description: "Knowledge base articles visible to the connection user.", path: []string{"articles"}, fields: []string{"id,idReadable,summary,content,project(id,name,shortName),reporter(id,login,fullName),created,updated,tags(id,name)"}, columns: articleColumns(), getKeys: []string{"id", "id_readable"}},
 		{name: "youtrack_agile", description: "Agile boards visible to the connection user.", path: []string{"agiles"}, fields: []string{"id,name,owner(id,login,fullName),projects(id,name,shortName),sprints(id,name),currentSprint(id,name)"}, columns: agileColumns()},
 		{name: "youtrack_issue_comment", description: "Issue comments visible to the connection user.", path: []string{"issues"}, parentKey: "issue_id", parentPath: []string{"comments"}, fields: []string{"id,text,author(id,login,fullName),created,updated,issue(id,idReadable,summary)"}, columns: commentColumns(), listKeys: plugin.SingleColumn("issue_id")},
-		{name: "youtrack_issue_work_item", description: "Issue work items visible to the connection user.", path: []string{"workItems"}, fields: []string{"id,text,author(id,login,fullName),creator(id,login,fullName),date,created,updated,duration(minutes,presentation),issue(id,idReadable,summary)"}, columns: workItemColumns(), listKeys: plugin.OptionalColumns([]string{"issue_id", "query", "start_date", "end_date", "start", "end", "created_start", "created_end", "updated_start", "updated_end", "author_filter", "creator_filter"})},
+		{name: "youtrack_issue_work_item", description: "Issue work items visible to the connection user.", path: []string{"workItems"}, fields: []string{"id,text,author(id,login,fullName),creator(id,login,fullName),date,created,updated,duration(minutes,presentation),issue(id,idReadable,summary)"}, columns: workItemColumns(), listKeys: workItemListKeyColumns()},
 	}
 }
 
@@ -121,19 +121,27 @@ func workItemColumns() []*plugin.Column {
 		{Name: "creator", Type: proto.ColumnType_JSON, Description: "The user who created the work item."},
 		{Name: "issue", Type: proto.ColumnType_JSON, Description: "The parent issue."},
 		{Name: "duration", Type: proto.ColumnType_JSON, Description: "The recorded duration."},
-		{Name: "date", Type: proto.ColumnType_TIMESTAMP, Description: "The work date.", Transform: transform.FromField("Date").Transform(milliseconds)},
-		{Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the work item was created.", Transform: transform.FromField("Created").Transform(milliseconds)},
-		{Name: "updated", Type: proto.ColumnType_TIMESTAMP, Description: "When the work item was last updated.", Transform: transform.FromField("Updated").Transform(milliseconds)},
+		{Name: "date", Type: proto.ColumnType_TIMESTAMP, Description: "The work date. Range qualifiers are pushed to the global work-item API as inclusive start/end Unix milliseconds.", Transform: transform.FromField("Date").Transform(milliseconds)},
+		{Name: "created", Type: proto.ColumnType_TIMESTAMP, Description: "When the work item was created. Range qualifiers are pushed to the global work-item API as inclusive createdStart/createdEnd Unix milliseconds.", Transform: transform.FromField("Created").Transform(milliseconds)},
+		{Name: "updated", Type: proto.ColumnType_TIMESTAMP, Description: "When the work item was last updated. Range qualifiers are pushed to the global work-item API as inclusive updatedStart/updatedEnd Unix milliseconds.", Transform: transform.FromField("Updated").Transform(milliseconds)},
 		{Name: "query", Type: proto.ColumnType_STRING, Description: "An exact issue search query pushed to the global work-item API.", Transform: transform.FromQual("query")},
-		{Name: "start_date", Type: proto.ColumnType_TIMESTAMP, Description: "Inclusive work date lower bound, sent as YYYY-MM-DD.", Transform: transform.FromQual("start_date")},
-		{Name: "end_date", Type: proto.ColumnType_TIMESTAMP, Description: "Inclusive work date upper bound, sent as YYYY-MM-DD.", Transform: transform.FromQual("end_date")},
-		{Name: "start", Type: proto.ColumnType_TIMESTAMP, Description: "Work timestamp lower bound, sent as Unix milliseconds.", Transform: transform.FromQual("start")},
-		{Name: "end", Type: proto.ColumnType_TIMESTAMP, Description: "Work timestamp upper bound, sent as Unix milliseconds.", Transform: transform.FromQual("end")},
-		{Name: "created_start", Type: proto.ColumnType_TIMESTAMP, Description: "Creation timestamp lower bound, sent as Unix milliseconds.", Transform: transform.FromQual("created_start")},
-		{Name: "created_end", Type: proto.ColumnType_TIMESTAMP, Description: "Creation timestamp upper bound, sent as Unix milliseconds.", Transform: transform.FromQual("created_end")},
-		{Name: "updated_start", Type: proto.ColumnType_TIMESTAMP, Description: "Update timestamp lower bound, sent as Unix milliseconds.", Transform: transform.FromQual("updated_start")},
-		{Name: "updated_end", Type: proto.ColumnType_TIMESTAMP, Description: "Update timestamp upper bound, sent as Unix milliseconds.", Transform: transform.FromQual("updated_end")},
 		{Name: "author_filter", Type: proto.ColumnType_STRING, Description: "One or more author IDs or logins pushed to the global work-item API.", Transform: transform.FromQual("author_filter")},
 		{Name: "creator_filter", Type: proto.ColumnType_STRING, Description: "One or more creator IDs or logins pushed to the global work-item API.", Transform: transform.FromQual("creator_filter")},
 	}
+}
+
+// workItemListKeyColumns returns the optional list qualifiers for
+// youtrack_issue_work_item: exact matches plus range operators on the real
+// timestamp columns, which resourceList maps to the global work-item API's
+// start/end, createdStart/createdEnd, and updatedStart/updatedEnd parameters.
+func workItemListKeyColumns() plugin.KeyColumnSlice {
+	keyColumns := plugin.OptionalColumns([]string{"issue_id", "query", "author_filter", "creator_filter"})
+	for _, name := range []string{"date", "created", "updated"} {
+		keyColumns = append(keyColumns, &plugin.KeyColumn{
+			Name:      name,
+			Operators: []string{">", ">=", "=", "<", "<="},
+			Require:   plugin.Optional,
+		})
+	}
+	return keyColumns
 }

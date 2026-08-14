@@ -43,14 +43,29 @@ func TestTableSchemas(t *testing.T) {
 
 	workItem := tables["youtrack_issue_work_item"]
 	for name, columnType := range map[string]proto.ColumnType{
-		"query": proto.ColumnType_STRING, "start_date": proto.ColumnType_TIMESTAMP,
-		"end_date": proto.ColumnType_TIMESTAMP, "start": proto.ColumnType_TIMESTAMP,
-		"end": proto.ColumnType_TIMESTAMP, "created_start": proto.ColumnType_TIMESTAMP,
-		"created_end": proto.ColumnType_TIMESTAMP, "updated_start": proto.ColumnType_TIMESTAMP,
-		"updated_end": proto.ColumnType_TIMESTAMP, "creator": proto.ColumnType_JSON,
+		"query": proto.ColumnType_STRING, "creator": proto.ColumnType_JSON,
+		"date":    proto.ColumnType_TIMESTAMP,
 		"created": proto.ColumnType_TIMESTAMP, "updated": proto.ColumnType_TIMESTAMP,
+		"author_filter": proto.ColumnType_STRING, "creator_filter": proto.ColumnType_STRING,
 	} {
 		assertColumn(t, workItem, name, columnType)
+	}
+	for _, name := range []string{"start_date", "end_date", "start", "end", "created_start", "created_end", "updated_start", "updated_end"} {
+		for _, column := range workItem.Columns {
+			if column.Name == name {
+				t.Errorf("table %q still has pseudo-qualifier column %q, want range operators on real timestamp columns", workItem.Name, name)
+			}
+		}
+	}
+	rangeColumns := map[string][]string{}
+	for _, keyColumn := range workItem.List.KeyColumns {
+		rangeColumns[keyColumn.Name] = keyColumn.Operators
+	}
+	for _, name := range []string{"date", "created", "updated"} {
+		want := []string{">", ">=", "=", "<", "<="}
+		if got := rangeColumns[name]; len(got) != len(want) {
+			t.Errorf("table %q list key column %q operators = %v, want %v", workItem.Name, name, got, want)
+		}
 	}
 }
 

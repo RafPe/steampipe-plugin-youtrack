@@ -128,8 +128,8 @@ select
   duration ->> 'presentation' as duration
 from youtrack.youtrack_issue_work_item
 where author_filter = 'me'
-  and start_date = timestamp '2026-08-01'
-  and end_date = timestamp '2026-08-10'
+  and date >= timestamp '2026-08-01'
+  and date <= timestamp '2026-08-10'
 order by date desc
 limit 100;
 ```
@@ -143,8 +143,8 @@ select
   round(sum((duration ->> 'minutes')::numeric) / 60, 2) as hours
 from youtrack.youtrack_issue_work_item
 where author_filter = 'me'
-  and start_date = timestamp '2026-08-01'
-  and end_date = timestamp '2026-08-31'
+  and date >= timestamp '2026-08-01'
+  and date <= timestamp '2026-08-31'
 group by issue ->> 'idReadable'
 order by minutes desc;
 ```
@@ -159,8 +159,8 @@ with logged_work as (
     (duration ->> 'minutes')::integer as minutes
   from youtrack.youtrack_issue_work_item
   where author_filter = 'me'
-    and start_date = timestamp '2026-08-01'
-    and end_date = timestamp '2026-08-31'
+    and date >= timestamp '2026-08-01'
+    and date <= timestamp '2026-08-31'
 )
 select
   w.issue_id,

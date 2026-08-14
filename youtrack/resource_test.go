@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/turbot/steampipe-plugin-sdk/v6/grpc/proto"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/context_key"
+	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/quals"
 	"github.com/turbot/steampipe-plugin-sdk/v6/plugin/transform"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -179,26 +181,55 @@ func TestWorkItemListPushesDocumentedFilters(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	stamp := timestamppb.New(time.Date(2026, time.March, 4, 10, 0, 0, 0, time.UTC))
+	start := time.Date(2026, time.March, 4, 10, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
 	d := queryData(t, server.URL)
 	d.EqualsQuals = plugin.KeyColumnEqualsQualMap{
-		"query": proto.NewQualValue("project: DEMO"), "start_date": proto.NewQualValue(stamp),
-		"end_date": proto.NewQualValue(stamp), "start": proto.NewQualValue(stamp),
-		"end": proto.NewQualValue(stamp), "created_start": proto.NewQualValue(stamp),
-		"created_end": proto.NewQualValue(stamp), "updated_start": proto.NewQualValue(stamp),
-		"updated_end": proto.NewQualValue(stamp), "author_filter": qualValueList("alice", "1-2"),
+		"query": proto.NewQualValue("project: DEMO"), "author_filter": qualValueList("alice", "1-2"),
+	}
+	d.Quals = plugin.KeyColumnQualMap{
+		"date": {Name: "date", Quals: quals.QualSlice{
+			{Column: "date", Operator: ">=", Value: proto.NewQualValue(timestamppb.New(start))},
+			{Column: "date", Operator: "<", Value: proto.NewQualValue(timestamppb.New(end))},
+			{Column: "date", Operator: ">", Value: proto.NewQualValue("not-a-timestamp")},
+		}},
+		"created": {Name: "created", Quals: quals.QualSlice{
+			{Column: "created", Operator: ">", Value: proto.NewQualValue(timestamppb.New(start))},
+			{Column: "created", Operator: "<=", Value: proto.NewQualValue(timestamppb.New(end))},
+		}},
+		"updated": {Name: "updated", Quals: quals.QualSlice{
+			{Column: "updated", Operator: "=", Value: proto.NewQualValue(timestamppb.New(start))},
+		}},
 	}
 	definition := resourceDefinitions()[9]
 	if _, err := resourceList(definition)(context.Background(), d, nil); err != nil {
 		t.Fatalf("resourceList(work items) error = %v, want nil", err)
 	}
 
+	d.Quals = nil
 	d.EqualsQuals = plugin.KeyColumnEqualsQualMap{"creator_filter": proto.NewQualValue("bob")}
 	if _, err := resourceList(definition)(context.Background(), d, nil); err != nil {
 		t.Fatalf("resourceList(work items scalar creator) error = %v, want nil", err)
 	}
-	if len(requests) != 2 || requests[0].Get("startDate") != "2026-03-04" || requests[0]["author"][1] != "1-2" || requests[1].Get("creator") != "bob" {
-		t.Errorf("resourceList(work items) queries = %v, want date, repeated author, and scalar creator filters", requests)
+	startMs, endMs := start.UnixMilli(), end.UnixMilli()
+	if len(requests) != 2 || requests[1].Get("creator") != "bob" {
+		t.Fatalf("resourceList(work items) queries = %v, want two requests with scalar creator filter", requests)
+	}
+	first := requests[0]
+	for parameter, want := range map[string]string{
+		"start":        strconv.FormatInt(startMs, 10),
+		"end":          strconv.FormatInt(endMs-1, 10),
+		"createdStart": strconv.FormatInt(startMs+1, 10),
+		"createdEnd":   strconv.FormatInt(endMs, 10),
+		"updatedStart": strconv.FormatInt(startMs, 10),
+		"updatedEnd":   strconv.FormatInt(startMs, 10),
+	} {
+		if got := first.Get(parameter); got != want {
+			t.Errorf("resourceList(work items) %s = %q, want %q", parameter, got, want)
+		}
+	}
+	if first["author"][1] != "1-2" {
+		t.Errorf("resourceList(work items) author = %v, want repeated author filter", first["author"])
 	}
 }
 
