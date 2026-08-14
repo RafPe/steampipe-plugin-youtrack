@@ -48,7 +48,7 @@ func TestNewRejectsInvalidInputsAndOptions(t *testing.T) {
 		{name: "nil option", base: "https://example.test", token: "token", options: []Option{nil}},
 		{name: "nil HTTP client", base: "https://example.test", token: "token", options: []Option{WithHTTPClient(nil)}},
 		{name: "zero page", base: "https://example.test", token: "token", options: []Option{WithPageSize(0)}},
-		{name: "oversized page", base: "https://example.test", token: "token", options: []Option{WithPageSize(43)}},
+		{name: "oversized page", base: "https://example.test", token: "token", options: []Option{WithPageSize(1001)}},
 		{name: "zero body", base: "https://example.test", token: "token", options: []Option{WithMaxBodyBytes(0)}},
 		{name: "zero attempts", base: "https://example.test", token: "token", options: []Option{WithRetry(0, 0)}},
 		{name: "negative delay", base: "https://example.test", token: "token", options: []Option{WithRetry(1, -1)}},
