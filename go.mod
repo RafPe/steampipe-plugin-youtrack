@@ -2,7 +2,7 @@ module github.com/RafPe/steampipe-plugin-youtrack
 
 go 1.26.0
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/turbot/steampipe-plugin-sdk/v6 v6.0.0
