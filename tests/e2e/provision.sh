@@ -30,6 +30,11 @@
 #     (fresh volumes), runs the wizard as normal and persists the generated
 #     admin credentials for next time. Intended for local iteration only;
 #     never used in CI.
+#
+# Tuning: E2E_STARTUP_TIMEOUT (seconds, default 600) caps how long to wait
+# for YouTrack to come back up after the wizard finishes. Raise it if a
+# slow or loaded machine trips the ceiling; it only bounds a poll loop that
+# exits as soon as the instance is ready.
 set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -149,19 +154,40 @@ else
   # After finishing, the backend restarts internally and serves a 503
   # "warming up" page until it is ready; poll /api/users/me until it flips
   # to the real backend's 401 Unauthorized.
+  #
+  # The ceiling is wall-clock rather than an iteration count because each
+  # probe can itself burn up to its --max-time against an unresponsive
+  # backend, which shrinks a counted loop's real budget exactly when the
+  # instance is slowest. It is also deliberately generous (default 10min,
+  # well inside e2e.yml's 30min job timeout): this restart is JVM- and
+  # disk-bound, so its duration tracks runner load rather than anything in
+  # this repo. A 180s ceiling here failed the v0.2.0 release on a cold CI
+  # runner even though the same commit provisioned in 55s three days
+  # earlier.
+  startup_timeout=${E2E_STARTUP_TIMEOUT:-600}
   ready=0
-  attempt=0
-  while [ "$attempt" -lt 90 ]; do
+  status=000
+  deadline=$(($(date +%s) + startup_timeout))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     status=$(curl --silent --show-error --max-time 10 --output /dev/null \
       --write-out '%{http_code}' "$base_url/api/users/me" 2>/dev/null) || status=000
     if [ "$status" = "401" ]; then
       ready=1
       break
     fi
-    attempt=$((attempt + 1))
     sleep 2
   done
-  [ "$ready" -eq 1 ] || fail "YouTrack did not finish starting after the wizard completed (waited 180s); the pinned image's startup behavior may have changed"
+  if [ "$ready" -ne 1 ]; then
+    # Say what the backend was actually reporting, so the next failure is
+    # diagnosable from the log alone: a final 503 means it was still warming
+    # up and the ceiling is genuinely too low, whereas 000 (connection
+    # refused) means the container went away and no ceiling would have
+    # helped. The CI job tears the stack down on failure, so dump the
+    # container's own log here while it still exists.
+    printf '%s\n' "provision: last status from /api/users/me was $status; recent youtrack container logs follow" >&2
+    compose logs --tail 50 youtrack >&2 || true
+    fail "YouTrack did not finish starting after the wizard completed (waited ${startup_timeout}s, last HTTP status $status); the pinned image's startup behavior may have changed"
+  fi
 
   if [ "$reuse" = "1" ]; then
     umask 077
