@@ -280,8 +280,18 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
-          cp ".changes/${VERSION}.md" release-notes.md
-          go run github.com/goreleaser/goreleaser/v2@v2.17.1 release --clean --release-notes release-notes.md
+          set -eu
+          # Stage the curated notes OUTSIDE the work tree. GoReleaser
+          # validates git state before anything else and counts an untracked
+          # file as dirty, so copying these into the repo root aborted the
+          # v0.2.0 publish with "git is in a dirty state: ?? release-notes.md"
+          # -- after the tag had already been pushed. $RUNNER_TEMP leaves the
+          # tagged checkout pristine, which is what that validation exists to
+          # protect; do not "fix" this by ignoring the file or skipping the
+          # check instead.
+          notes="$RUNNER_TEMP/release-notes.md"
+          cp ".changes/${VERSION}.md" "$notes"
+          go run github.com/goreleaser/goreleaser/v2@v2.17.1 release --clean --release-notes "$notes"
 
       - name: Verify checksums manifest
         run: |

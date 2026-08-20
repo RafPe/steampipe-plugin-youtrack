@@ -297,8 +297,14 @@ grep -q '\.changes/\${VERSION}\.md' "$release_workflow" ||
 	fail "C3: $release_workflow no longer asserts the v-prefixed .changes/\${VERSION}.md filename"
 
 # --- 4. C4: published notes come from the curated changelog ----------------
-grep -q -- '--release-notes release-notes.md' "$release_workflow" ||
+grep -q -- '--release-notes "\$notes"' "$release_workflow" ||
 	fail "C4: GoReleaser must receive the curated changelog section as release notes"
+# GoReleaser validates git state before anything else and counts an untracked
+# file as dirty, so staging the notes inside the work tree aborts the publish
+# *after* the tag has been pushed (this is what broke v0.2.0). Pin the staging
+# location to $RUNNER_TEMP so that regression cannot come back.
+grep -q 'notes="\$RUNNER_TEMP/release-notes\.md"' "$release_workflow" ||
+	fail "C4: the curated notes must be staged outside the work tree (\$RUNNER_TEMP), or GoReleaser aborts on a dirty git state"
 grep -q 'Prepare Release' README.md ||
 	fail "C4: README must summarize the explicit Prepare Release gate"
 
