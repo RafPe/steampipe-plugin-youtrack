@@ -1,3 +1,0 @@
-kind: Changed
-body: Raise the default list page size from 25 to 100 items; 42 is only YouTrack's default when $top is omitted, not a maximum.
-time: 2026-08-13T07:02:36.389524+03:00

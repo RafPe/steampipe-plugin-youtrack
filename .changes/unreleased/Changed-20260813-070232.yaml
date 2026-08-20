@@ -1,3 +1,0 @@
-kind: Changed
-body: Cache the YouTrack API client per connection instead of rebuilding it on every hydrate call.
-time: 2026-08-13T07:02:32.747973+03:00
