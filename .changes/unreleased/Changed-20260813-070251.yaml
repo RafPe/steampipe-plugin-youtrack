@@ -1,3 +1,0 @@
-kind: Changed
-body: List queries now stream rows page by page as they arrive from YouTrack, and stop paging when the query is cancelled, instead of collecting all pages before returning any rows.
-time: 2026-08-13T07:02:51.652576+03:00

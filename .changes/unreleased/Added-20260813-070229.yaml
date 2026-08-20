@@ -1,3 +1,0 @@
-kind: Added
-body: Support the YOUTRACK_URL and YOUTRACK_TOKEN environment variables as fallbacks for the base_url and token connection arguments, and remove the unsupported env() function from the default connection config.
-time: 2026-08-13T07:02:29.137676+03:00

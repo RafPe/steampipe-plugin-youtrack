@@ -1,3 +1,0 @@
-kind: Changed
-body: youtrack_issue_work_item now supports range operators (=, >, >=, <, <=) directly on the date, created, and updated timestamp columns, pushed to the API as inclusive millisecond bounds.
-time: 2026-08-13T07:02:53.516125+03:00
