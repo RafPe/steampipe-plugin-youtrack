@@ -1,7 +1,7 @@
 ---
 organization: RafPe
 category: ["software development"]
-icon_url: "https://raw.githubusercontent.com/RafPe/steampipe-plugin-youtrack/main/assets/social-card.png"
+icon_url: "/images/plugins/rafpe/youtrack.svg"
 brand_color: "#FF318C"
 display_name: "YouTrack"
 short_name: "youtrack"
@@ -11,9 +11,7 @@ og_image: "/images/plugins/rafpe/youtrack-social-graphic.png"
 engines: ["steampipe", "sqlite", "postgres", "export"]
 ---
 
-<!-- icon_url and og_image are placeholders: the real Hub asset paths
-     (/images/plugins/rafpe/youtrack.svg and -social-graphic.png) are issued
-     by Turbot via the Steampipe community Slack at submission time.
+<!-- icon_url and og_image use the Hub asset paths confirmed during review.
      brand_color is not confirmed against JetBrains' brand guidelines. -->
 
 # YouTrack + Steampipe
@@ -99,4 +97,4 @@ export YOUTRACK_TOKEN=perm:cmFmcGU=.UGVybWFuZW50IHRva2Vu.abcdefghij1234567890
 
 HTTPS is required; plain HTTP is allowed only for localhost or a loopback address. Root and sub-path installations are supported; `/api` is appended exactly once.
 
-See [Releases](releases.md) for how versions are cut and published.
+See [Releases](https://github.com/RafPe/steampipe-plugin-youtrack/blob/main/docs/releases.md) for how versions are cut and published.
