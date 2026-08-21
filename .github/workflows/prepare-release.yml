@@ -22,6 +22,7 @@ jobs:
   compute:
     name: "release:compute"
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read
@@ -133,6 +134,7 @@ jobs:
     needs: compute
     if: needs.compute.outputs.release == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
