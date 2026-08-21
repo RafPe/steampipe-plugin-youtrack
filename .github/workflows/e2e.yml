@@ -27,6 +27,7 @@ permissions:
 
 jobs:
   e2e:
+    name: "test:e2e"
     # CRITICAL gotcha, not just a style choice: inside a workflow invoked
     # via workflow_call, github.event_name and github.event are INHERITED
     # from the top-level event that triggered the CALLING workflow, not
