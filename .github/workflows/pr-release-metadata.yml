@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   validate-pr:
+    name: "meta:release-label"
     runs-on: ubuntu-24.04
     permissions:
       contents: read

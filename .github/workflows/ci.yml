@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   quality:
+    name: "test:unit"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -41,6 +42,7 @@ jobs:
         run: make docs
 
   security:
+    name: "scan:vuln"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -52,6 +54,7 @@ jobs:
       - run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.8 ./...
 
   release-config:
+    name: "release:config"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -72,6 +75,7 @@ jobs:
         run: make release-contract-check
 
   release-snapshot:
+    name: "release:snapshot"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0

@@ -20,6 +20,7 @@ jobs:
   # so a `release: false` result can cleanly skip all write/PR steps via a
   # job-level `if:`, rather than threading conditionals through every step.
   compute:
+    name: "release:compute"
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -128,6 +129,7 @@ jobs:
           fi
 
   prepare:
+    name: "release:prepare"
     needs: compute
     if: needs.compute.outputs.release == 'true'
     runs-on: ubuntu-24.04

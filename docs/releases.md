@@ -416,15 +416,19 @@ name is stable and has succeeded at least once can leave every pull
 request administratively blocked (a required check that has never
 reported success blocks merging indefinitely).
 
-Required checks, by their exact job name:
+Required checks, by the exact name GitHub reports for them. That is each
+job's display `name:`, which is deliberately *not* its job id -- the ids
+below are unchanged and are still what `needs:` and the rest of this
+document refer to. The colon-namespaced display names are shared with the
+sibling repositories so one required-check set covers all of them.
 
-| Job name | Workflow | What it gates |
-| --- | --- | --- |
-| `quality` | `.github/workflows/ci.yml` | Formatting, tests, coverage, race, vet, lint, build, docs. |
-| `security` | `.github/workflows/ci.yml` | `govulncheck` and `gosec`. |
-| `release-config` | `.github/workflows/ci.yml` | `releasectl` self-validation, `goreleaser check`, changelog drift. |
-| `release-snapshot` | `.github/workflows/ci.yml` | Full multi-arch GoReleaser snapshot + artifact contract. |
-| `validate-pr` | `.github/workflows/pr-release-metadata.yml` | Exactly-one-release-label and fragment validation. |
+| Check name | Job id | Workflow | What it gates |
+| --- | --- | --- | --- |
+| `test:unit` | `quality` | `.github/workflows/ci.yml` | Formatting, tests, coverage, race, vet, lint, build, docs. |
+| `scan:vuln` | `security` | `.github/workflows/ci.yml` | `govulncheck` and `gosec`. |
+| `release:config` | `release-config` | `.github/workflows/ci.yml` | `releasectl` self-validation, `goreleaser check`, changelog drift. |
+| `release:snapshot` | `release-snapshot` | `.github/workflows/ci.yml` | Full multi-arch GoReleaser snapshot + artifact contract. |
+| `meta:release-label` | `validate-pr` | `.github/workflows/pr-release-metadata.yml` | Exactly-one-release-label and fragment validation. |
 
 Do not require `release.yml`'s own jobs (`verify`, `check`, `e2e`, `tag`,
 `publish`) as pull request checks: that workflow only runs on a merge to
