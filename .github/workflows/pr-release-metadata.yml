@@ -13,10 +13,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Cancel superseded pull request runs; never cancel a run on main or a
+  # scheduled run, whose results are recorded against the default branch.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   validate-pr:
     name: "meta:release-label"
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
