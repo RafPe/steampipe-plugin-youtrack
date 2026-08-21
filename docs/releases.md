@@ -424,7 +424,8 @@ sibling repositories so one required-check set covers all of them.
 
 | Check name | Job id | Workflow | What it gates |
 | --- | --- | --- | --- |
-| `test:unit` | `quality` | `.github/workflows/ci.yml` | Formatting, tests, coverage, race, vet, lint, build, docs. |
+| `test:unit` | `quality` | `.github/workflows/ci.yml` | Formatting, tests, coverage, race, vet, build, docs. |
+| `lint:go` | `lint` | `.github/workflows/ci.yml` | `golangci-lint`. |
 | `scan:vuln` | `security` | `.github/workflows/ci.yml` | `govulncheck` and `gosec`. |
 | `release:config` | `release-config` | `.github/workflows/ci.yml` | `releasectl` self-validation, `goreleaser check`, changelog drift. |
 | `release:snapshot` | `release-snapshot` | `.github/workflows/ci.yml` | Full multi-arch GoReleaser snapshot + artifact contract. |
